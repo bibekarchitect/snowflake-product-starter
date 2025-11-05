@@ -1,4 +1,4 @@
-name: Publish Data Product (Manual, Env-aware)
+name: Publish Data Product (Manual, Explicit Vars)
 
 on:
   workflow_dispatch:
@@ -30,48 +30,47 @@ on:
         type: boolean
         default: false
 
-# ... keep your existing workflow header and inputs ...
-
 jobs:
   pipeline:
     runs-on: ubuntu-latest
+    # Must match a GitHub Environment that contains the secrets
     environment: ${{ github.event.inputs.environment }}
-
-    # Job-level env (still useful)
-    env:
-      SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-      SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
-      # Leave REGION unset for org-scoped accounts (XYAUPKY-XH85556). If you added one, it's fine.
-      SNOWFLAKE_REGION:   ${{ secrets.SNOWFLAKE_REGION }}
-      TF_IN_AUTOMATION:   "true"
-      TF_INPUT:           "0"
 
     steps:
       - uses: actions/checkout@v4
 
-      # Fail fast if any required env is missing
-      - name: Validate Snowflake env
+      # ---- Fail fast if required secrets are missing in the selected Environment ----
+      - name: Validate Snowflake secrets (env-level)
+        env:
+          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           : "${SNOWFLAKE_ACCOUNT:?Need SNOWFLAKE_ACCOUNT in this Environment}"
           : "${SNOWFLAKE_USER:?Need SNOWFLAKE_USER in this Environment}"
           : "${SNOWFLAKE_PASSWORD:?Need SNOWFLAKE_PASSWORD in this Environment}"
           : "${SNOWFLAKE_ROLE:?Need SNOWFLAKE_ROLE in this Environment}"
-          echo "All required Snowflake env vars are present."
+          echo "All required Snowflake secrets are present."
 
-      # Extra probe to see if the shell can read them (doesn't print secret values)
-      - name: Probe vars (masked)
+      # (Optional) quick masked probe
+      - name: Probe secrets presence (masked)
+        env:
+          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          for v in SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE SNOWFLAKE_REGION; do
+          for v in SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE; do
             if [ -n "${!v}" ]; then echo "$v=SET"; else echo "$v=EMPTY"; fi
           done
 
+      # ---- Tooling ----
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install deps
+      - name: Install deps (Python, yq)
         run: |
           python -m pip install --upgrade pip
           pip install -r tools/requirements.txt
@@ -81,47 +80,52 @@ jobs:
         with:
           terraform_version: 1.7.5
 
+      # ---- Terraform init/validate ----
       - name: Terraform Init & Validate
         working-directory: terraform
-        env:   # <-- inject at step-level too
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
-          SNOWFLAKE_REGION:   ${{ secrets.SNOWFLAKE_REGION }}
         run: |
           terraform init -upgrade
           terraform validate
 
-          - name: Terraform Plan
-          working-directory: terraform
-          run: |
-            DB_NAME="$(yq '.layout.database' ../product.yml)"
-            terraform init -upgrade
-            terraform validate
-            terraform plan \
-              -var "snowflake_account=${{ secrets.SNOWFLAKE_ACCOUNT }}" \
-              -var "snowflake_user=${{ secrets.SNOWFLAKE_USER }}" \
-              -var "snowflake_password=${{ secrets.SNOWFLAKE_PASSWORD }}" \
-              -var "snowflake_role=${{ secrets.SNOWFLAKE_ROLE }}" \
-              -var create_database=${{ github.event.inputs.create_database }} \
-              -var "database_name=${DB_NAME}" \
-              -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
-              -var 'resource_monitor={"name":"RM_CUSTOMER360","monthly_credits_cap":500,"notify_at":[70,90,100]}'
+      # ---- Plan with explicit -var credentials ----
+      - name: Terraform Plan
+        working-directory: terraform
+        env:
+          SF_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SF_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SF_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SF_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+        run: |
+          DB_NAME="$(yq '.layout.database' ../product.yml)"
+          terraform plan \
+            -var "snowflake_account=${SF_ACCOUNT}" \
+            -var "snowflake_user=${SF_USER}" \
+            -var "snowflake_password=${SF_PASSWORD}" \
+            -var "snowflake_role=${SF_ROLE}" \
+            -var create_database=${{ github.event.inputs.create_database }} \
+            -var "database_name=${DB_NAME}" \
+            -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
+            -var 'resource_monitor={"name":"RM_CUSTOMER360","monthly_credits_cap":500,"notify_at":[70,90,100]}'
 
       - name: Render SQL (dry-run)
         run: python tools/runner.py render --manifest product.yml --out build/sql --dry-run
 
-        - name: Terraform Apply
+      # ---- Apply infra ----
+      - name: Terraform Apply
         if: ${{ inputs.apply == true }}
         working-directory: terraform
+        env:
+          SF_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SF_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SF_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SF_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           DB_NAME="$(yq '.layout.database' ../product.yml)"
           terraform apply -auto-approve \
-            -var "snowflake_account=${{ secrets.SNOWFLAKE_ACCOUNT }}" \
-            -var "snowflake_user=${{ secrets.SNOWFLAKE_USER }}" \
-            -var "snowflake_password=${{ secrets.SNOWFLAKE_PASSWORD }}" \
-            -var "snowflake_role=${{ secrets.SNOWFLAKE_ROLE }}" \
+            -var "snowflake_account=${SF_ACCOUNT}" \
+            -var "snowflake_user=${SF_USER}" \
+            -var "snowflake_password=${SF_PASSWORD}" \
+            -var "snowflake_role=${SF_ROLE}" \
             -var create_database=${{ github.event.inputs.create_database }} \
             -var "database_name=${DB_NAME}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
@@ -131,6 +135,7 @@ jobs:
         if: ${{ inputs.apply == true }}
         run: python tools/runner.py render --manifest product.yml --out build/sql
 
+      # ---- Optional: execute SQL via SnowSQL ----
       - name: Install SnowSQL
         if: ${{ inputs.apply == true && inputs.execute_sql == true }}
         run: |
@@ -139,20 +144,20 @@ jobs:
           echo "$GITHUB_WORKSPACE/snowsql/bin" >> $GITHUB_PATH
           snowsql -v
 
-      - name: Execute SQL
+      - name: Execute SQL (in order)
         if: ${{ inputs.apply == true && inputs.execute_sql == true }}
-        env:   # <-- and here for SnowSQL’s client
+        env:
           SNOWSQL_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWSQL_USER:    ${{ secrets.SNOWFLAKE_USER }}
           SNOWSQL_PWD:     ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWSQL_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
-          SNOWSQL_REGION:  ${{ secrets.SNOWFLAKE_REGION }}
         run: |
           for f in $(ls build/sql/*.sql | sort); do
             echo "==> $f"
             snowsql -o exit_on_error=true -q "$(cat "$f")"
           done
 
+      # ---- Artifacts ----
       - name: Upload rendered SQL
         if: always()
         uses: actions/upload-artifact@v4
@@ -160,15 +165,13 @@ jobs:
           name: rendered-sql
           path: build/sql
 
-      - name: Secrets probe (hashed)
-        run: |
-            for v in SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE; do
-              val="${{ secrets[$v] }}"
-              if [ -z "$val" ]; then
-                echo "$v = EMPTY"
-                exit 1
-              else
-                echo "$v length = ${#val}"
-                echo "$v sha256 = $(printf "%s" "$val" | sha256sum | cut -d' ' -f1)"
-              fi
-            done
+      - name: Generate DataHub recipe
+        if: ${{ inputs.catalog == true }}
+        run: python tools/runner.py catalog --manifest product.yml
+
+      - name: Upload DataHub recipe
+        if: ${{ inputs.catalog == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: datahub-recipe
+          path: build/datahub_snowflake_recipe.yml
