@@ -93,37 +93,35 @@ jobs:
           terraform init -upgrade
           terraform validate
 
-      - name: Terraform Plan
-        working-directory: terraform
-        env:   # <-- inject again here
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
-          SNOWFLAKE_REGION:   ${{ secrets.SNOWFLAKE_REGION }}
-        run: |
-          DB_NAME="$(yq '.layout.database' ../product.yml)"
-          terraform plan \
-            -var create_database=${{ github.event.inputs.create_database }} \
-            -var "database_name=${DB_NAME}" \
-            -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
-            -var 'resource_monitor={"name":"RM_CUSTOMER360","monthly_credits_cap":500,"notify_at":[70,90,100]}'
+          - name: Terraform Plan
+          working-directory: terraform
+          run: |
+            DB_NAME="$(yq '.layout.database' ../product.yml)"
+            terraform init -upgrade
+            terraform validate
+            terraform plan \
+              -var "snowflake_account=${{ secrets.SNOWFLAKE_ACCOUNT }}" \
+              -var "snowflake_user=${{ secrets.SNOWFLAKE_USER }}" \
+              -var "snowflake_password=${{ secrets.SNOWFLAKE_PASSWORD }}" \
+              -var "snowflake_role=${{ secrets.SNOWFLAKE_ROLE }}" \
+              -var create_database=${{ github.event.inputs.create_database }} \
+              -var "database_name=${DB_NAME}" \
+              -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
+              -var 'resource_monitor={"name":"RM_CUSTOMER360","monthly_credits_cap":500,"notify_at":[70,90,100]}'
 
       - name: Render SQL (dry-run)
         run: python tools/runner.py render --manifest product.yml --out build/sql --dry-run
 
-      - name: Terraform Apply
+        - name: Terraform Apply
         if: ${{ inputs.apply == true }}
         working-directory: terraform
-        env:   # <-- and here
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
-          SNOWFLAKE_REGION:   ${{ secrets.SNOWFLAKE_REGION }}
         run: |
           DB_NAME="$(yq '.layout.database' ../product.yml)"
           terraform apply -auto-approve \
+            -var "snowflake_account=${{ secrets.SNOWFLAKE_ACCOUNT }}" \
+            -var "snowflake_user=${{ secrets.SNOWFLAKE_USER }}" \
+            -var "snowflake_password=${{ secrets.SNOWFLAKE_PASSWORD }}" \
+            -var "snowflake_role=${{ secrets.SNOWFLAKE_ROLE }}" \
             -var create_database=${{ github.event.inputs.create_database }} \
             -var "database_name=${DB_NAME}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
@@ -161,3 +159,16 @@ jobs:
         with:
           name: rendered-sql
           path: build/sql
+
+      - name: Secrets probe (hashed)
+        run: |
+            for v in SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE; do
+              val="${{ secrets[$v] }}"
+              if [ -z "$val" ]; then
+                echo "$v = EMPTY"
+                exit 1
+              else
+                echo "$v length = ${#val}"
+                echo "$v sha256 = $(printf "%s" "$val" | sha256sum | cut -d' ' -f1)"
+              fi
+            done

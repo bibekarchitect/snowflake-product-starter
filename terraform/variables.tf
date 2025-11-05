@@ -27,3 +27,8 @@ variable "resource_monitor" {
     notify_at           = list(number)
   })
 }
+
+variable "snowflake_account"  { type = string }   # e.g., "XYAUPKY-XH85556"
+variable "snowflake_user"     { type = string }   # e.g., "CICD_BOT"
+variable "snowflake_password" { type = string }   # mark secret in workflow
+variable "snowflake_role"     { type = string }   # e.g., "CICD_SNOWFLAKE_DEPLOY"
