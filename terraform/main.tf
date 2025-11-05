@@ -1,8 +1,8 @@
-resource "snowflake_resource_monitor" "rm" {
-  name = var.resource_monitor.name
-  credit_quota = var.resource_monitor.monthly_credits_cap
-  notify_triggers = var.resource_monitor.notify_at
-}
+#resource "snowflake_resource_monitor" "rm" {
+#  name = var.resource_monitor.name
+#  credit_quota = var.resource_monitor.monthly_credits_cap
+#  notify_triggers = var.resource_monitor.notify_at
+#}
 
 resource "snowflake_warehouse" "ingest" {
   name                 = var.warehouses.ingest
