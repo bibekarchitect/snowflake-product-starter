@@ -33,7 +33,6 @@ on:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    # Must match a GitHub Environment that contains the secrets
     environment: ${{ github.event.inputs.environment }}
 
     steps:
@@ -42,26 +41,29 @@ jobs:
       # ---- Fail fast if required secrets are missing in the selected Environment ----
       - name: Validate Snowflake secrets (env-level)
         env:
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_ORG_NAME:     ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          SNOWFLAKE_ACCOUNT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_USER:         ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD:     ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:         ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          : "${SNOWFLAKE_ACCOUNT:?Need SNOWFLAKE_ACCOUNT in this Environment}"
+          : "${SNOWFLAKE_ORG_NAME:?Need SNOWFLAKE_ORG_NAME in this Environment}"
+          : "${SNOWFLAKE_ACCOUNT_NAME:?Need SNOWFLAKE_ACCOUNT_NAME in this Environment}"
           : "${SNOWFLAKE_USER:?Need SNOWFLAKE_USER in this Environment}"
           : "${SNOWFLAKE_PASSWORD:?Need SNOWFLAKE_PASSWORD in this Environment}"
           : "${SNOWFLAKE_ROLE:?Need SNOWFLAKE_ROLE in this Environment}"
           echo "All required Snowflake secrets are present."
 
-      # (Optional) quick masked probe
+      # (Optional) masked probe (doesn't print values)
       - name: Probe secrets presence (masked)
         env:
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_ORG_NAME:     ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          SNOWFLAKE_ACCOUNT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_USER:         ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD:     ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:         ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          for v in SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE; do
+          for v in SNOWFLAKE_ORG_NAME SNOWFLAKE_ACCOUNT_NAME SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE; do
             if [ -n "${!v}" ]; then echo "$v=SET"; else echo "$v=EMPTY"; fi
           done
 
@@ -87,20 +89,22 @@ jobs:
           terraform init -upgrade
           terraform validate
 
-      # ---- Plan with explicit -var credentials ----
+      # ---- Plan with explicit -var credentials (no env autodiscovery) ----
       - name: Terraform Plan
         working-directory: terraform
         env:
-          SF_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SF_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SF_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SF_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+          ORG_NAME:   ${{ secrets.SNOWFLAKE_ORG_NAME }}      # e.g., XYAUPKY
+          ACCT_NAME:  ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}  # e.g., XH85556
+          SF_USER:    ${{ secrets.SNOWFLAKE_USER }}
+          SF_PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SF_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           DB_NAME="$(yq '.layout.database' ../product.yml)"
           terraform plan \
-            -var "snowflake_account=${SF_ACCOUNT}" \
+            -var "snowflake_org_name=${ORG_NAME}" \
+            -var "snowflake_account_name=${ACCT_NAME}" \
             -var "snowflake_user=${SF_USER}" \
-            -var "snowflake_password=${SF_PASSWORD}" \
+            -var "snowflake_password=${SF_PASS}" \
             -var "snowflake_role=${SF_ROLE}" \
             -var create_database=${{ github.event.inputs.create_database }} \
             -var "database_name=${DB_NAME}" \
@@ -115,16 +119,18 @@ jobs:
         if: ${{ inputs.apply == true }}
         working-directory: terraform
         env:
-          SF_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SF_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SF_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SF_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+          ORG_NAME:   ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          ACCT_NAME:  ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SF_USER:    ${{ secrets.SNOWFLAKE_USER }}
+          SF_PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SF_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           DB_NAME="$(yq '.layout.database' ../product.yml)"
           terraform apply -auto-approve \
-            -var "snowflake_account=${SF_ACCOUNT}" \
+            -var "snowflake_org_name=${ORG_NAME}" \
+            -var "snowflake_account_name=${ACCT_NAME}" \
             -var "snowflake_user=${SF_USER}" \
-            -var "snowflake_password=${SF_PASSWORD}" \
+            -var "snowflake_password=${SF_PASS}" \
             -var "snowflake_role=${SF_ROLE}" \
             -var create_database=${{ github.event.inputs.create_database }} \
             -var "database_name=${DB_NAME}" \
@@ -147,7 +153,7 @@ jobs:
       - name: Execute SQL (in order)
         if: ${{ inputs.apply == true && inputs.execute_sql == true }}
         env:
-          SNOWSQL_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWSQL_ACCOUNT: ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
           SNOWSQL_USER:    ${{ secrets.SNOWFLAKE_USER }}
           SNOWSQL_PWD:     ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWSQL_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
