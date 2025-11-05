@@ -60,8 +60,7 @@ jobs:
             CURRENT_REGION()              AS REGION,
             CURRENT_USER()                AS USERNAME,
             CURRENT_ROLE()                AS ROLE;
-        "
-
+          "
       # ---- Fail fast if required secrets are missing in the selected Environment ----
       - name: Validate Snowflake secrets (env-level)
         env:
