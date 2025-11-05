@@ -38,6 +38,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install SnowSQL (probe)
+        run: |
+         curl -sSfL https://sfc-repo.snowflakecomputing.com/snowsql/bootstrap/1.2/linux_x86_64/snowsql-1.2.29-linux_x86_64.bash -o snowsql.bash
+         bash snowsql.bash -y -i ./snowsql
+         echo "$GITHUB_WORKSPACE/snowsql/bin" >> $GITHUB_PATH
+
+      - name: Probe Snowflake session identity
+        env:
+        # If you’re on the new provider (org/account model), compose the identifier for SnowSQL.
+         SNOWSQL_ACCOUNT: ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+         SNOWSQL_USER:    ${{ secrets.SNOWFLAKE_USER }}
+         SNOWSQL_PWD:     ${{ secrets.SNOWFLAKE_PASSWORD }}
+         SNOWSQL_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
+        run: |
+         snowsql -o friendly=false -q "
+          SELECT
+            CURRENT_ORGANIZATION_NAME()   AS ORG,
+            CURRENT_ACCOUNT_NAME()        AS ACCT,
+            CURRENT_ACCOUNT()             AS ACCOUNT_LOCATOR,
+            CURRENT_REGION()              AS REGION,
+            CURRENT_USER()                AS USERNAME,
+            CURRENT_ROLE()                AS ROLE;
+        "
+
       # ---- Fail fast if required secrets are missing in the selected Environment ----
       - name: Validate Snowflake secrets (env-level)
         env:
