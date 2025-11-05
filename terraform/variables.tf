@@ -43,4 +43,4 @@ variable "resource_monitor" {
     notify_at           = list(number)
   })
 }
-}
+
