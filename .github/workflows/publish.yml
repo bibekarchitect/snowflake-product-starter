@@ -30,19 +30,20 @@ on:
         type: boolean
         default: false
 
+# ... keep your existing workflow header and inputs ...
+
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    # tie this run to the selected GitHub Environment (must contain the secrets)
     environment: ${{ github.event.inputs.environment }}
 
-    # ✅ Map Environment secrets to env vars for ALL steps
+    # Job-level env (still useful)
     env:
       SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
       SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
-      # Optional for org-scoped accounts (e.g., XYAUPKY-XH85556 doesn’t need it)
+      # Leave REGION unset for org-scoped accounts (XYAUPKY-XH85556). If you added one, it's fine.
       SNOWFLAKE_REGION:   ${{ secrets.SNOWFLAKE_REGION }}
       TF_IN_AUTOMATION:   "true"
       TF_INPUT:           "0"
@@ -50,7 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---- Sanity checks so we fail fast with a helpful message ----
+      # Fail fast if any required env is missing
       - name: Validate Snowflake env
         run: |
           : "${SNOWFLAKE_ACCOUNT:?Need SNOWFLAKE_ACCOUNT in this Environment}"
@@ -59,16 +60,18 @@ jobs:
           : "${SNOWFLAKE_ROLE:?Need SNOWFLAKE_ROLE in this Environment}"
           echo "All required Snowflake env vars are present."
 
-      - name: Probe account var (masked)
+      # Extra probe to see if the shell can read them (doesn't print secret values)
+      - name: Probe vars (masked)
         run: |
-          if [ -n "$SNOWFLAKE_ACCOUNT" ]; then echo "SNOWFLAKE_ACCOUNT is set"; else echo "SNOWFLAKE_ACCOUNT is EMPTY"; fi
+          for v in SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE SNOWFLAKE_REGION; do
+            if [ -n "${!v}" ]; then echo "$v=SET"; else echo "$v=EMPTY"; fi
+          done
 
-      # ---- Tooling ----
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install deps (Python, yq)
+      - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install -r tools/requirements.txt
@@ -78,17 +81,27 @@ jobs:
         with:
           terraform_version: 1.7.5
 
-      # ---- Plan ----
       - name: Terraform Init & Validate
         working-directory: terraform
+        env:   # <-- inject at step-level too
+          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_REGION:   ${{ secrets.SNOWFLAKE_REGION }}
         run: |
           terraform init -upgrade
           terraform validate
 
       - name: Terraform Plan
         working-directory: terraform
+        env:   # <-- inject again here
+          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_REGION:   ${{ secrets.SNOWFLAKE_REGION }}
         run: |
-          # read DB name from manifest
           DB_NAME="$(yq '.layout.database' ../product.yml)"
           terraform plan \
             -var create_database=${{ github.event.inputs.create_database }} \
@@ -99,10 +112,15 @@ jobs:
       - name: Render SQL (dry-run)
         run: python tools/runner.py render --manifest product.yml --out build/sql --dry-run
 
-      # ---- Apply infra & render SQL ----
       - name: Terraform Apply
         if: ${{ inputs.apply == true }}
         working-directory: terraform
+        env:   # <-- and here
+          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_REGION:   ${{ secrets.SNOWFLAKE_REGION }}
         run: |
           DB_NAME="$(yq '.layout.database' ../product.yml)"
           terraform apply -auto-approve \
@@ -115,7 +133,6 @@ jobs:
         if: ${{ inputs.apply == true }}
         run: python tools/runner.py render --manifest product.yml --out build/sql
 
-      # ---- Optional: execute SQL with SnowSQL ----
       - name: Install SnowSQL
         if: ${{ inputs.apply == true && inputs.execute_sql == true }}
         run: |
@@ -124,36 +141,23 @@ jobs:
           echo "$GITHUB_WORKSPACE/snowsql/bin" >> $GITHUB_PATH
           snowsql -v
 
-      - name: Execute SQL (in order)
+      - name: Execute SQL
         if: ${{ inputs.apply == true && inputs.execute_sql == true }}
-        env:
-          SNOWSQL_ACCOUNT: ${{ env.SNOWFLAKE_ACCOUNT }}
-          SNOWSQL_USER:    ${{ env.SNOWFLAKE_USER }}
-          SNOWSQL_PWD:     ${{ env.SNOWFLAKE_PASSWORD }}
-          SNOWSQL_ROLE:    ${{ env.SNOWFLAKE_ROLE }}
-          # SNOWSQL_REGION is optional; omit if your account has no region suffix
-          SNOWSQL_REGION:  ${{ env.SNOWFLAKE_REGION }}
+        env:   # <-- and here for SnowSQL’s client
+          SNOWSQL_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWSQL_USER:    ${{ secrets.SNOWFLAKE_USER }}
+          SNOWSQL_PWD:     ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWSQL_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWSQL_REGION:  ${{ secrets.SNOWFLAKE_REGION }}
         run: |
           for f in $(ls build/sql/*.sql | sort); do
             echo "==> $f"
             snowsql -o exit_on_error=true -q "$(cat "$f")"
           done
 
-      # ---- Artifacts ----
       - name: Upload rendered SQL
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rendered-sql
           path: build/sql
-
-      - name: Generate DataHub recipe
-        if: ${{ inputs.catalog == true }}
-        run: python tools/runner.py catalog --manifest product.yml
-
-      - name: Upload DataHub recipe
-        if: ${{ inputs.catalog == true }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: datahub-recipe
-          path: build/datahub_snowflake_recipe.yml
