@@ -1,0 +1,128 @@
+name: Publish Data Product (Fixed)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (dev/uat/prod)"
+        required: true
+        type: choice
+        options: [dev, uat, prod]
+        default: dev
+      apply:
+        description: "Apply Terraform & render SQL (true) or plan only (false)"
+        required: true
+        type: boolean
+        default: false
+      execute_sql:
+        description: "Execute rendered SQL via SnowSQL"
+        required: true
+        type: boolean
+        default: false
+      catalog:
+        description: "Generate DataHub recipe artifact"
+        required: true
+        type: boolean
+        default: false
+      create_database:
+        description: "Create the database defined in product.yml (requires privilege)"
+        required: true
+        type: boolean
+        default: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tools/requirements.txt
+          sudo apt-get update && sudo apt-get install -y jq yq
+
+      - name: Export environment secrets
+        run: |
+          echo "SNOWFLAKE_ACCOUNT=${{ secrets.SNOWFLAKE_ACCOUNT }}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_USER=${{ secrets.SNOWFLAKE_USER }}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_PASSWORD=${{ secrets.SNOWFLAKE_PASSWORD }}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_ROLE=${{ secrets.SNOWFLAKE_ROLE }}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_REGION=${{ secrets.SNOWFLAKE_REGION }}" >> $GITHUB_ENV
+          echo "DATAHUB_GMS_HOST=${{ secrets.DATAHUB_GMS_HOST }}" >> $GITHUB_ENV
+          echo "DATAHUB_GMS_TOKEN=${{ secrets.DATAHUB_GMS_TOKEN }}" >> $GITHUB_ENV
+
+      - name: Terraform Init/Validate/Plan
+        working-directory: terraform
+        run: |
+          terraform init -upgrade
+          terraform validate
+          terraform plan             -var account="$SNOWFLAKE_ACCOUNT"             -var username="$SNOWFLAKE_USER"             -var password="$SNOWFLAKE_PASSWORD"             -var role="$SNOWFLAKE_ROLE"             -var region="$SNOWFLAKE_REGION"             -var create_database=${{ github.event.inputs.create_database || false }}             -var database_name="$(yq '.layout.database' ../product.yml)"             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}'             -var 'resource_monitor={"name":"RM_CUSTOMER360","monthly_credits_cap":500,"notify_at":[70,90,100]}'
+
+      - name: Render SQL (dry-run)
+        run: python tools/runner.py render --manifest product.yml --out build/sql --dry-run
+
+      - name: Terraform Apply
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.apply == 'true' }}
+        working-directory: terraform
+        run: |
+          terraform apply -auto-approve             -var account="$SNOWFLAKE_ACCOUNT"             -var username="$SNOWFLAKE_USER"             -var password="$SNOWFLAKE_PASSWORD"             -var role="$SNOWFLAKE_ROLE"             -var region="$SNOWFLAKE_REGION"             -var create_database=${{ github.event.inputs.create_database || false }}             -var database_name="$(yq '.layout.database' ../product.yml)"             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}'             -var 'resource_monitor={"name":"RM_CUSTOMER360","monthly_credits_cap":500,"notify_at":[70,90,100]}'
+
+      - name: Render SQL
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.apply == 'true' }}
+        run: python tools/runner.py render --manifest product.yml --out build/sql
+
+      - name: Install SnowSQL (if requested)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.execute_sql == 'true' }}
+        run: |
+          curl -sSfL https://sfc-repo.snowflakecomputing.com/snowsql/bootstrap/1.2/linux_x86_64/snowsql-1.2.29-linux_x86_64.bash -o snowsql.bash
+          bash snowsql.bash -y -i ./snowsql
+          echo "$GITHUB_WORKSPACE/snowsql/bin" >> $GITHUB_PATH
+          snowsql -v
+
+      - name: Execute SQL
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.execute_sql == 'true' }}
+        env:
+          SNOWSQL_ACCOUNT: ${{ env.SNOWFLAKE_ACCOUNT }}
+          SNOWSQL_USER: ${{ env.SNOWFLAKE_USER }}
+          SNOWSQL_PWD: ${{ env.SNOWFLAKE_PASSWORD }}
+          SNOWSQL_ROLE: ${{ env.SNOWFLAKE_ROLE }}
+          SNOWSQL_REGION: ${{ env.SNOWFLAKE_REGION }}
+        run: |
+          for f in $(ls build/sql/*.sql | sort); do
+            echo "==> $f"
+            snowsql -o exit_on_error=true -q "$(cat $f)"
+          done
+
+      - name: Upload SQL artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-sql
+          path: build/sql
+
+      - name: Generate DataHub Recipe
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.catalog == 'true' }}
+        run: python tools/runner.py catalog --manifest product.yml
+
+      - name: Upload DataHub Recipe
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.catalog == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: datahub-recipe
+          path: build/datahub_snowflake_recipe.yml

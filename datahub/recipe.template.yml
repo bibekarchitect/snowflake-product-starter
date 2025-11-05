@@ -1,0 +1,18 @@
+source:
+  type: snowflake
+  config:
+    account_id: ${SNOWFLAKE_ACCOUNT}
+    username: ${SNOWFLAKE_USER}
+    password: ${SNOWFLAKE_PASSWORD}
+    role: ${SNOWFLAKE_ROLE}
+    warehouse: ${SNOWFLAKE_WAREHOUSE}
+    include_lineage: true
+    database_pattern:
+      allow:
+        - ${SNOWFLAKE_DATABASE}
+
+sink:
+  type: datahub-rest
+  config:
+    server: ${DATAHUB_GMS_HOST}
+    token: ${DATAHUB_GMS_TOKEN}

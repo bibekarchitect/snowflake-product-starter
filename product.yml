@@ -1,0 +1,105 @@
+product:
+  name: orders
+  version: v1
+  domain: customer360
+  env: dev
+
+ownership:
+  roles:
+    owner: CUSTOMER360_OWNER
+    writer: CUSTOMER360_WRITER
+    reader: CUSTOMER360_READER
+    publisher: CUSTOMER360_PUBLISHER
+
+layout:
+  database: CUSTOMER360_DEV
+  schemas:
+    raw: RAW
+    curated: CURATED
+    product: PRODUCT
+    meta: META
+
+compute:
+  warehouses:
+    ingest: CUSTOMER360_INGEST_WH
+    transform: CUSTOMER360_TRANSFORM_WH
+    serve: CUSTOMER360_SERVE_WH
+  resource_monitor:
+    name: RM_CUSTOMER360
+    monthly_credits_cap: 500
+    notify_at: [70, 90, 100]
+
+governance:
+  tags:
+    DOMAIN: CUSTOMER360
+    ENV: DEV
+    DATA_PRODUCT: ORDERS_V1
+    SENSITIVITY: PII
+  masking_policies:
+    email_mask:
+      applies_to: []   # Example left empty in sample
+      policy_sql: |
+        CREATE OR REPLACE MASKING POLICY PII_EMAIL_MASK AS (val STRING) RETURNS STRING ->
+          CASE WHEN CURRENT_ROLE() IN ('CUSTOMER360_OWNER','CUSTOMER360_WRITER','PLATFORM_ADMIN') THEN val
+               ELSE '***MASKED***' END;
+
+ingest:
+  method: snowpipe
+  raw_table: RAW.ORDERS_SRC
+  columns:
+    - { name: ORDER_ID, type: NUMBER }
+    - { name: CUSTOMER_ID, type: NUMBER }
+    - { name: EMAIL, type: STRING }
+    - { name: ORDER_TS, type: TIMESTAMP_NTZ }
+    - { name: _INGEST_TS, type: TIMESTAMP_NTZ, default: "CURRENT_TIMESTAMP" }
+
+transform:
+  incremental:
+    use_streams_tasks: true
+    stream: META.S_ORDERS_SRC
+    schedule_cron_utc: "0 */1 * * *"
+    curated_target_table: CURATED.ORDERS_BASE
+    merge_sql: |
+      MERGE INTO {{db}}.{{curated}}.ORDERS_BASE t
+      USING (SELECT ORDER_ID, CUSTOMER_ID, EMAIL, ORDER_TS FROM {{db}}.{{raw}}.ORDERS_SRC) s
+      ON t.ORDER_ID = s.ORDER_ID
+      WHEN MATCHED THEN UPDATE SET CUSTOMER_ID=s.CUSTOMER_ID, EMAIL=s.EMAIL, ORDER_TS=s.ORDER_TS
+      WHEN NOT MATCHED THEN INSERT (ORDER_ID, CUSTOMER_ID, EMAIL, ORDER_TS)
+      VALUES (s.ORDER_ID, s.CUSTOMER_ID, s.EMAIL, s.ORDER_TS);
+
+models:
+  - name: CURATED.ORDERS_ENRICHED
+    type: dynamic_table
+    target_warehouse: CUSTOMER360_TRANSFORM_WH
+    query: |
+      -- Minimal example: enrich equals base (no joins to missing tables)
+      SELECT ORDER_ID, CUSTOMER_ID, EMAIL, ORDER_TS
+      FROM {{db}}.{{curated}}.ORDERS_BASE;
+
+product_contract:
+  views:
+    - name: PRODUCT.ORDERS_V1
+      secure: true
+      sql: |
+        SELECT ORDER_ID, CUSTOMER_ID, EMAIL, ORDER_TS
+        FROM {{db}}.{{curated}}.ORDERS_ENRICHED;
+
+publishing:
+  method: share
+  share_name: DP_CUSTOMER360_ORDERS_V1
+  consumers:
+    - account: ORG_ACCT_ABC
+
+quality:
+  tests:
+    - name: not_null_order_id
+      sql_check: "SELECT COUNT(*)=0 AS ok FROM {{db}}.{{curated}}.ORDERS_BASE WHERE ORDER_ID IS NULL"
+
+catalog:
+  datahub:
+    domain: customer360
+    owners: ["team-c360@company.com"]
+    glossary_tags: ["orders"]
+    slos:
+      freshness_minutes: 30
+      completeness_pct: 99.5
