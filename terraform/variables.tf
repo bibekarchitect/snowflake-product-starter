@@ -1,21 +1,5 @@
-variable "account" {
-  type = string
-}
-
-variable "username" {
-  type = string
-}
-
-variable "password" {
-  type = string
-}
-
-variable "role" {
-  type = string
-}
-
-variable "region" {
-  type = string
+terraform {
+  required_version = ">= 1.6.0"
 }
 
 variable "create_database" {
@@ -43,4 +27,3 @@ variable "resource_monitor" {
     notify_at           = list(number)
   })
 }
-
