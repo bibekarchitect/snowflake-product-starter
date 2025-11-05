@@ -40,6 +40,15 @@ jobs:
   pipeline:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'dev' }}
+    # map secrets to environment variables for ALL steps
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+      # For org-scoped URLs like XYAUPKY-XH85556, REGION is not required.
+      # Leave it empty or omit if you don’t have a region suffix in your URL.
+      SNOWFLAKE_REGION: ${{ secrets.SNOWFLAKE_REGION }}
     steps:
       - uses: actions/checkout@v4
 
