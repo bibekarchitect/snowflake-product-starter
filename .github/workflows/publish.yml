@@ -70,8 +70,8 @@ jobs:
           pip install -r tools/requirements.txt
           sudo apt-get update && sudo apt-get install -y yq
 
-      # ---- Configure Snowflake CLI connection profile [connections.ci] ----
-      - name: Configure Snowflake CLI connection (ci)
+      # ---- Configure Snowflake CLI default connection [connections.ci] ----
+      - name: Configure Snowflake CLI default connection
         env:
           ORG_NAME: ${{ secrets.SNOWFLAKE_ORG_NAME }}
           ACCT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
@@ -81,26 +81,24 @@ jobs:
         run: |
           mkdir -p "$HOME/.snowflake"
           cat > "$HOME/.snowflake/config.toml" <<'EOF'
-          [connections.ci]
-          account  = "__ACCOUNT__"
-          user     = "__USER__"
-          password = "__PASS__"
-          role     = "__ROLE__"
-          EOF
-          sed -i "s/__ACCOUNT__/${ORG_NAME}-${ACCT_NAME}/" "$HOME/.snowflake/config.toml"
-          sed -i "s/__USER__/${SF_USER}/" "$HOME/.snowflake/config.toml"
-          sed -i "s/__PASS__/${SF_PASS}/" "$HOME/.snowflake/config.toml"
-          sed -i "s/__ROLE__/${SF_ROLE}/" "$HOME/.snowflake/config.toml"
-          chmod 600 "$HOME/.snowflake/config.toml"
-          echo "Created ~/.snowflake/config.toml with [connections.ci]"
+          default_connection_name = "ci"
 
-      # ---- Probe Snowflake session identity via the ci connection ----
-      - name: Probe Snowflake session identity (ci)
-        env:
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+          [connections]
+            [connections.ci]
+            account  = "__ACCOUNT__"
+            user     = "__USER__"
+            password = "__PASS__"
+            role     = "__ROLE__"
+          EOF
+                    sed -i "s/__ACCOUNT__/${ORG_NAME}-${ACCT_NAME}/" "$HOME/.snowflake/config.toml"
+                    sed -i "s/__USER__/${SF_USER}/" "$HOME/.snowflake/config.toml"
+                    sed -i "s/__PASS__/${SF_PASS}/" "$HOME/.snowflake/config.toml"
+                    sed -i "s/__ROLE__/${SF_ROLE}/" "$HOME/.snowflake/config.toml"
+                    chmod 600 "$HOME/.snowflake/config.toml"
+                    echo "Wrote ~/.snowflake/config.toml with default_connection_name=ci"
+
+      # ---- Probe Snowflake session identity via the default connection ----
+      - name: Probe Snowflake session identity
         run: |
           snow sql -q "
             SELECT
@@ -174,14 +172,9 @@ jobs:
         if: ${{ github.event.inputs.apply == 'true' }}
         run: python tools/runner.py render --manifest product.yml --out build/sql
 
-      # ---- Execute SQL using Snowflake CLI (uses ci connection) ----
-      - name: Execute SQL (snow CLI via env)
+      # ---- Execute SQL using Snowflake CLI (uses default connection) ----
+      - name: Execute SQL (snow CLI)
         if: ${{ github.event.inputs.apply == 'true' && github.event.inputs.execute_sql == 'true' }}
-        env:
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           shopt -s nullglob
           for f in build/sql/*.sql; do
