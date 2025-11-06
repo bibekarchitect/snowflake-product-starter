@@ -30,7 +30,7 @@ variable "resource_monitor_name" {
   default = "RM_CUSTOMER360"   # set "" to attach none
 }
 
-# Keep null so TF never prompts in CI even if referenced somewhere old
+# Keep null to ensure TF never prompts in CI (legacy compatibility)
 variable "resource_monitor" {
   type    = any
   default = null

@@ -38,23 +38,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---- Check required secrets ----
+      # --- Validate required secrets (minimum set) ---
       - name: Validate required secrets
         env:
-          SNOWFLAKE_ORG_NAME:       ${{ secrets.SNOWFLAKE_ORG_NAME }}
-          SNOWFLAKE_ACCOUNT_NAME:   ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SNOWFLAKE_USER:           ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD:       ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:           ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          : "${SNOWFLAKE_ORG_NAME:?Need SNOWFLAKE_ORG_NAME in this Environment}"
-          : "${SNOWFLAKE_ACCOUNT_NAME:?Need SNOWFLAKE_ACCOUNT_NAME in this Environment}"
           : "${SNOWFLAKE_USER:?Need SNOWFLAKE_USER in this Environment}"
           : "${SNOWFLAKE_PASSWORD:?Need SNOWFLAKE_PASSWORD in this Environment}"
           : "${SNOWFLAKE_ROLE:?Need SNOWFLAKE_ROLE in this Environment}"
-          echo "All required Snowflake secrets are present."
+          echo "User/password/role secrets present."
 
-      # ---- Tooling ----
+      # --- Resolve SNOWFLAKE_ACCOUNT for all subsequent steps ---
+      # Prefer the account locator (UE47735) if provided. Otherwise use ORG-ACCOUNT (XYAUPKY-XH85556).
+      - name: Resolve SNOWFLAKE_ACCOUNT (locator preferred)
+        env:
+          LOCATOR:   ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}      # e.g., UE47735 (optional but recommended)
+          ORG_NAME:  ${{ secrets.SNOWFLAKE_ORG_NAME }}              # e.g., XYAUPKY
+          ACCT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}          # e.g., XH85556
+        run: |
+          if [ -n "${LOCATOR}" ]; then
+            echo "Using account locator: ${LOCATOR}"
+            echo "SNOWFLAKE_ACCOUNT=${LOCATOR}" >> "$GITHUB_ENV"
+            echo "SNOWFLAKE_REGION=europe-west4.gcp" >> "$GITHUB_ENV"   # required when using locator
+          else
+            : "${ORG_NAME:?Need SNOWFLAKE_ORG_NAME or SNOWFLAKE_ACCOUNT_LOCATOR in this Environment}"
+            : "${ACCT_NAME:?Need SNOWFLAKE_ACCOUNT_NAME or SNOWFLAKE_ACCOUNT_LOCATOR in this Environment}"
+            echo "Using org-scoped account: ${ORG_NAME}-${ACCT_NAME}"
+            echo "SNOWFLAKE_ACCOUNT=${ORG_NAME}-${ACCT_NAME}" >> "$GITHUB_ENV"
+            # Do NOT set SNOWFLAKE_REGION when using ORG-ACCOUNT (Snowflake resolves automatically)
+          fi
+
+      # --- Tooling ---
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -65,37 +81,37 @@ jobs:
           python -m pip install --upgrade pip
           pip install snowflake-cli
           sudo apt-get update && sudo apt-get install -y yq
-          # Optional: if you use tools/runner.py later, also:
-          # pip install -r tools/requirements.txt || true
 
-      # ---- Configure Snowflake CLI default connection (no region) ----
+      # --- Configure Snowflake CLI default connection ---
+      # Uses whatever SNOWFLAKE_ACCOUNT was resolved to (locator+region or org-account no region)
       - name: Configure Snowflake CLI default connection
         env:
-          ORG_NAME:  ${{ secrets.SNOWFLAKE_ORG_NAME }}
-          ACCT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SF_USER:   ${{ secrets.SNOWFLAKE_USER }}
-          SF_PASS:   ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SF_ROLE:   ${{ secrets.SNOWFLAKE_ROLE }}
+          SF_ACCOUNT: ${{ env.SNOWFLAKE_ACCOUNT }}
+          SF_REGION:  ${{ env.SNOWFLAKE_REGION }}
+          SF_USER:    ${{ secrets.SNOWFLAKE_USER }}
+          SF_PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SF_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           mkdir -p "$HOME/.snowflake"
-          cat > "$HOME/.snowflake/config.toml" <<'EOF'
-          default_connection_name = "ci"
-
-          [connections]
-            [connections.ci]
-            account  = "__ACCOUNT__"   # org-scoped; region auto-resolves
-            user     = "__USER__"
-            password = "__PASS__"
-            role     = "__ROLE__"
-          EOF
-          sed -i "s/__ACCOUNT__/${ORG_NAME}-${ACCT_NAME}/" "$HOME/.snowflake/config.toml"
-          sed -i "s/__USER__/${SF_USER}/" "$HOME/.snowflake/config.toml"
-          sed -i "s/__PASS__/${SF_PASS}/" "$HOME/.snowflake/config.toml"
-          sed -i "s/__ROLE__/${SF_ROLE}/" "$HOME/.snowflake/config.toml"
+          {
+            echo 'default_connection_name = "ci"'
+            echo
+            echo "[connections]"
+            echo "  [connections.ci]"
+            echo "  account  = \"${SF_ACCOUNT}\""
+            # only write region if we have one (locator path)
+            if [ -n "${SF_REGION}" ]; then
+              echo "  region   = \"${SF_REGION}\""
+            fi
+            echo "  user     = \"${SF_USER}\""
+            echo "  password = \"${SF_PASS}\""
+            echo "  role     = \"${SF_ROLE}\""
+          } > "$HOME/.snowflake/config.toml"
           chmod 600 "$HOME/.snowflake/config.toml"
-          echo "Wrote $HOME/.snowflake/config.toml (no region)"
+          echo "Wrote $HOME/.snowflake/config.toml"
+          cat "$HOME/.snowflake/config.toml" | sed 's/password = ".*"/password = "***"/'
 
-      # ---- Probe via CLI (visibility) ----
+      # --- Probe Snowflake session identity via CLI ---
       - name: Probe Snowflake session identity (CLI)
         run: |
           snow sql -q "
@@ -108,7 +124,7 @@ jobs:
               CURRENT_ROLE()              AS ROLE;
           "
 
-      # ---- Terraform ----
+      # --- Terraform ---
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -122,8 +138,8 @@ jobs:
       - name: Terraform Init & Validate
         working-directory: terraform
         env:
-          # Provider reads these even during init
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_ACCOUNT:  ${{ env.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_REGION:   ${{ env.SNOWFLAKE_REGION }}
           SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
@@ -134,19 +150,21 @@ jobs:
       - name: Debug Snowflake env for TF
         working-directory: terraform
         env:
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_ACCOUNT:  ${{ env.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_REGION:   ${{ env.SNOWFLAKE_REGION }}
           SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           echo "SNOWFLAKE_ACCOUNT=$SNOWFLAKE_ACCOUNT"
+          echo "SNOWFLAKE_REGION=${SNOWFLAKE_REGION:-<unset>}"
           echo "SNOWFLAKE_USER=$SNOWFLAKE_USER"
           echo "SNOWFLAKE_ROLE=$SNOWFLAKE_ROLE"
           test -n "$SNOWFLAKE_ACCOUNT"
 
       - name: Verify Snowflake connection (same env as TF)
         env:
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_ACCOUNT:  ${{ env.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_REGION:   ${{ env.SNOWFLAKE_REGION }}
           SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
@@ -157,7 +175,8 @@ jobs:
             account=os.environ["SNOWFLAKE_ACCOUNT"],
             user=os.environ["SNOWFLAKE_USER"],
             password=os.environ["SNOWFLAKE_PASSWORD"],
-            role=os.environ["SNOWFLAKE_ROLE"]
+            role=os.environ["SNOWFLAKE_ROLE"],
+            region=os.environ.get("SNOWFLAKE_REGION")
           )
           cur = con.cursor()
           cur.execute("select current_user(), current_role(), current_account(), current_region()")
@@ -169,7 +188,8 @@ jobs:
         working-directory: terraform
         env:
           TF_INPUT: "false"
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_ACCOUNT:  ${{ env.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_REGION:   ${{ env.SNOWFLAKE_REGION }}
           SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
@@ -182,15 +202,13 @@ jobs:
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
             -var "resource_monitor_name=RM_CUSTOMER360"
 
-      - name: Render SQL (dry run)
-        run: python tools/runner.py render --manifest product.yml --out build/sql --dry-run || true
-
       - name: Terraform Apply
         if: ${{ github.event.inputs.apply == 'true' }}
         working-directory: terraform
         env:
           TF_INPUT: "false"
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_ACCOUNT:  ${{ env.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_REGION:   ${{ env.SNOWFLAKE_REGION }}
           SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
@@ -202,34 +220,3 @@ jobs:
             -var "database_name=${DB_NAME}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
             -var "resource_monitor_name=RM_CUSTOMER360"
-
-      - name: Render SQL (apply mode)
-        if: ${{ github.event.inputs.apply == 'true' }}
-        run: python tools/runner.py render --manifest product.yml --out build/sql || true
-
-      - name: Execute SQL (snow CLI)
-        if: ${{ github.event.inputs.apply == 'true' && github.event.inputs.execute_sql == 'true' }}
-        run: |
-          shopt -s nullglob
-          for f in build/sql/*.sql; do
-            echo "==> $f"
-            snow sql -f "$f"
-          done
-
-      - name: Upload rendered SQL
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rendered-sql
-          path: build/sql
-
-      - name: Generate DataHub recipe
-        if: ${{ github.event.inputs.catalog == 'true' }}
-        run: python tools/runner.py catalog --manifest product.yml
-
-      - name: Upload DataHub recipe
-        if: ${{ github.event.inputs.catalog == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: datahub-recipe
-          path: build/datahub_snowflake_recipe.yml

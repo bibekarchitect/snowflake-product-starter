@@ -1,10 +1,8 @@
-# Create DB only if asked
 resource "snowflake_database" "db" {
   count = var.create_database ? 1 : 0
   name  = var.database_name
 }
 
-# Warehouses (requires CREATE WAREHOUSE ON ACCOUNT)
 resource "snowflake_warehouse" "ingest" {
   name             = var.warehouses.ingest
   warehouse_size   = "XSMALL"
