@@ -34,7 +34,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Make sure all required secrets are present
+      # Verify required secrets exist
       - name: Validate Snowflake secrets
         env:
           LOCATOR:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}  # e.g., UE47735
@@ -63,25 +63,27 @@ jobs:
           mkdir -p "$HOME/.snowflake"
           HOST="${LOCATOR}.${REGION}.snowflakecomputing.com"
 
-          echo "Will use:"
+          echo "Using:"
           echo "  account (locator): ${LOCATOR}"
           echo "  region:            ${REGION}"
           echo "  host:              ${HOST}"
           echo "  user/role:         ${USER}/${ROLE}"
 
           # --- Provider profile TOML used by Terraform provider ---
-          # Keep keys simple; host + user/password/role are sufficient when profile is used.
+          # IMPORTANT: Use keys the provider expects: account, region, user, password, role (host optional).
           cat > "$HOME/.snowflake/config" <<EOF
           [ci]
-          host     = "${HOST}"
+          account  = "${LOCATOR}"
+          region   = "${REGION}"
           user     = "${USER}"
           password = "${PASSWORD}"
           role     = "${ROLE}"
+          host     = "${HOST}"
           EOF
           chmod 600 "$HOME/.snowflake/config"
 
           # --- CLI config TOML used by 'snow' CLI ---
-          # Include ALL three: account, region, and host (covers all CLI builds).
+          # Include account, region, host explicitly for all CLI builds.
           cat > "$HOME/.snowflake/config.toml" <<EOF
           default_connection_name = "ci"
 
@@ -96,13 +98,13 @@ jobs:
           EOF
           chmod 600 "$HOME/.snowflake/config.toml"
 
-          # Export for provider usage
+          # Export ONLY the provider profile path & name for Terraform
           echo "SNOWFLAKE_CONFIG_PATH=$HOME/.snowflake/config" >> $GITHUB_ENV
           echo "SNOWFLAKE_PROFILE=ci"                          >> $GITHUB_ENV
 
-          echo "---- BEGIN ~/.snowflake/config.toml (CLI) ----"
-          cat "$HOME/.snowflake/config.toml"
-          echo "---- END ~/.snowflake/config.toml ----"
+          echo "---- BEGIN ~/.snowflake/config (provider) ----"
+          sed -n '1,200p' "$HOME/.snowflake/config"
+          echo "---- END ~/.snowflake/config ----"
 
       # Tooling
       - name: Setup Python
@@ -116,13 +118,10 @@ jobs:
           pip install snowflake-cli
           sudo apt-get update && sudo apt-get install -y yq
 
-      # Positively verify the CLI sees the connection and can connect
+      # Verify CLI profile loads and connects
       - name: Verify Snowflake CLI connection profile
         run: |
-          # List available connections to confirm our config file is being read
           snow --config-file "$HOME/.snowflake/config.toml" connection list || true
-
-          # Test the 'ci' connection explicitly
           snow --config-file "$HOME/.snowflake/config.toml" connection test --connection ci
 
       - name: Probe Snowflake identity (CLI)
@@ -140,12 +139,14 @@ jobs:
         with:
           terraform_version: "1.7.5"
 
+      # CRITICAL: unset any SNOWFLAKE_* env that could override the profile with empties
       - name: Terraform Init
         working-directory: terraform
         env:
           SNOWFLAKE_CONFIG_PATH: ${{ env.SNOWFLAKE_CONFIG_PATH }}
           SNOWFLAKE_PROFILE:     ${{ env.SNOWFLAKE_PROFILE }}
         run: |
+          unset SNOWFLAKE_ACCOUNT SNOWFLAKE_REGION SNOWFLAKE_HOST SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE || true
           rm -rf .terraform .terraform.lock.hcl
           terraform init -upgrade -reconfigure
           terraform validate
@@ -169,6 +170,7 @@ jobs:
           SNOWFLAKE_CONFIG_PATH: ${{ env.SNOWFLAKE_CONFIG_PATH }}
           SNOWFLAKE_PROFILE:     ${{ env.SNOWFLAKE_PROFILE }}
         run: |
+          unset SNOWFLAKE_ACCOUNT SNOWFLAKE_REGION SNOWFLAKE_HOST SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE || true
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           echo "DB from manifest: ${DB_NAME}"
           terraform plan -input=false -no-color \
@@ -185,6 +187,7 @@ jobs:
           SNOWFLAKE_CONFIG_PATH: ${{ env.SNOWFLAKE_CONFIG_PATH }}
           SNOWFLAKE_PROFILE:     ${{ env.SNOWFLAKE_PROFILE }}
         run: |
+          unset SNOWFLAKE_ACCOUNT SNOWFLAKE_REGION SNOWFLAKE_HOST SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE || true
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           echo "Applying for DB: ${DB_NAME}"
           terraform apply -auto-approve -input=false -no-color \
@@ -193,7 +196,7 @@ jobs:
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
             -var "resource_monitor_name=RM_CUSTOMER360"
 
-      # Optional: execute SQLs after apply
+      # Optional: execute SQL scripts after apply
       - name: Execute SQL scripts via Snowflake CLI
         if: ${{ github.event.inputs.apply == 'true' && github.event.inputs.execute_sql == 'true' }}
         run: |
