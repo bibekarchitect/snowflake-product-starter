@@ -29,3 +29,10 @@ variable "resource_monitor" {
   type    = any
   default = null
 }
+
+variable "snowflake_account"  { type = string }
+variable "snowflake_region"   { type = string }
+variable "snowflake_user"     { type = string }
+variable "snowflake_password" { type = string; sensitive = true }
+variable "snowflake_role"     { type = string }
+# keep your other variables (database_name, warehouses, etc.)

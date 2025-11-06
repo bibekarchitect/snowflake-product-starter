@@ -142,12 +142,7 @@ jobs:
       # CRITICAL: unset any SNOWFLAKE_* env that could override the profile with empties
       - name: Terraform Init
         working-directory: terraform
-        env:
-          SNOWFLAKE_CONFIG_PATH: ${{ env.SNOWFLAKE_CONFIG_PATH }}
-          SNOWFLAKE_PROFILE:     ${{ env.SNOWFLAKE_PROFILE }}
         run: |
-          unset SNOWFLAKE_ACCOUNT SNOWFLAKE_REGION SNOWFLAKE_HOST SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE || true
-          rm -rf .terraform .terraform.lock.hcl
           terraform init -upgrade -reconfigure
           terraform validate
 
@@ -166,16 +161,21 @@ jobs:
       - name: Terraform Plan
         working-directory: terraform
         env:
-          TF_INPUT: "false"
-          SNOWFLAKE_CONFIG_PATH: ${{ env.SNOWFLAKE_CONFIG_PATH }}
-          SNOWFLAKE_PROFILE:     ${{ env.SNOWFLAKE_PROFILE }}
+          ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
+          REGION:   ${{ secrets.SNOWFLAKE_REGION }}
+          USER:     ${{ secrets.SNOWFLAKE_USER }}
+          PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          unset SNOWFLAKE_ACCOUNT SNOWFLAKE_REGION SNOWFLAKE_HOST SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE || true
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
-          echo "DB from manifest: ${DB_NAME}"
-          terraform plan -input=false -no-color \
-            -var "create_database=${{ github.event.inputs.create_database }}" \
+          terraform plan -no-color -input=false \
+            -var "snowflake_account=${ACCOUNT}" \
+            -var "snowflake_region=${REGION}" \
+            -var "snowflake_user=${USER}" \
+            -var "snowflake_password=${PASSWORD}" \
+            -var "snowflake_role=${ROLE}" \
             -var "database_name=${DB_NAME}" \
+            -var "create_database=${{ github.event.inputs.create_database }}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
             -var "resource_monitor_name=RM_CUSTOMER360"
 
@@ -183,16 +183,21 @@ jobs:
         if: ${{ github.event.inputs.apply == 'true' }}
         working-directory: terraform
         env:
-          TF_INPUT: "false"
-          SNOWFLAKE_CONFIG_PATH: ${{ env.SNOWFLAKE_CONFIG_PATH }}
-          SNOWFLAKE_PROFILE:     ${{ env.SNOWFLAKE_PROFILE }}
+          ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
+          REGION:   ${{ secrets.SNOWFLAKE_REGION }}
+          USER:     ${{ secrets.SNOWFLAKE_USER }}
+          PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          unset SNOWFLAKE_ACCOUNT SNOWFLAKE_REGION SNOWFLAKE_HOST SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE || true
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
-          echo "Applying for DB: ${DB_NAME}"
           terraform apply -auto-approve -input=false -no-color \
-            -var "create_database=${{ github.event.inputs.create_database }}" \
+            -var "snowflake_account=${ACCOUNT}" \
+            -var "snowflake_region=${REGION}" \
+            -var "snowflake_user=${USER}" \
+            -var "snowflake_password=${PASSWORD}" \
+            -var "snowflake_role=${ROLE}" \
             -var "database_name=${DB_NAME}" \
+            -var "create_database=${{ github.event.inputs.create_database }}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
             -var "resource_monitor_name=RM_CUSTOMER360"
 
