@@ -31,54 +31,48 @@ jobs:
     environment: ${{ github.event.inputs.environment }}
 
     steps:
-      # -----------------------------------------------------------
-      # 1. Checkout the repository
-      # -----------------------------------------------------------
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # -----------------------------------------------------------
-      # 2. Validate required secrets
-      # -----------------------------------------------------------
-      - name: Validate required Snowflake secrets
+      # --- Validate required secrets ---
+      - name: Validate Snowflake secrets
         env:
-          SNOWFLAKE_ACCOUNT_LOCATOR: ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
-          SNOWFLAKE_REGION:           ${{ secrets.SNOWFLAKE_REGION }}
-          SNOWFLAKE_USER:             ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD:         ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:             ${{ secrets.SNOWFLAKE_ROLE }}
+          LOCATOR: ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
+          REGION:  ${{ secrets.SNOWFLAKE_REGION }}
+          USER:    ${{ secrets.SNOWFLAKE_USER }}
+          PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
+          ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          : "${SNOWFLAKE_ACCOUNT_LOCATOR:?Missing SNOWFLAKE_ACCOUNT_LOCATOR secret (e.g. UE47735)}"
-          : "${SNOWFLAKE_REGION:?Missing SNOWFLAKE_REGION secret (e.g. europe-west4.gcp)}"
-          : "${SNOWFLAKE_USER:?Missing SNOWFLAKE_USER secret}"
-          : "${SNOWFLAKE_PASSWORD:?Missing SNOWFLAKE_PASSWORD secret}"
-          : "${SNOWFLAKE_ROLE:?Missing SNOWFLAKE_ROLE secret}"
-          echo "✅ All required secrets found."
+          : "${LOCATOR:?Missing SNOWFLAKE_ACCOUNT_LOCATOR (e.g. UE47735)}"
+          : "${REGION:?Missing SNOWFLAKE_REGION (e.g. europe-west4.gcp)}"
+          : "${USER:?Missing SNOWFLAKE_USER}"
+          : "${PASS:?Missing SNOWFLAKE_PASSWORD}"
+          : "${ROLE:?Missing SNOWFLAKE_ROLE}"
+          echo "✅ Secrets verified."
 
-      # -----------------------------------------------------------
-      # 3. Setup Python (for Snowflake CLI, runner scripts, etc.)
-      # -----------------------------------------------------------
+      # --- Export combined envs for TF & CLI ---
+      - name: Export Snowflake ENV
+        run: |
+          LOCATOR='${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}'
+          REGION='${{ secrets.SNOWFLAKE_REGION }}'
+          echo "SNOWFLAKE_ACCOUNT=${LOCATOR}.${REGION}" >> $GITHUB_ENV     # Terraform uses this
+          echo "SF_LOCATOR=${LOCATOR}" >> $GITHUB_ENV                      # CLI uses split values
+          echo "SF_REGION=${REGION}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_USER=${{ secrets.SNOWFLAKE_USER }}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_PASSWORD=${{ secrets.SNOWFLAKE_PASSWORD }}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_ROLE=${{ secrets.SNOWFLAKE_ROLE }}" >> $GITHUB_ENV
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install Snowflake CLI and yq
+      - name: Install Snowflake CLI & yq
         run: |
           python -m pip install --upgrade pip
           pip install snowflake-cli
           sudo apt-get update && sudo apt-get install -y yq
 
-      # -----------------------------------------------------------
-      # 4. Configure Snowflake CLI connection
-      # -----------------------------------------------------------
-      - name: Configure Snowflake CLI connection
-        env:
-          SF_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
-          SF_REGION:   ${{ secrets.SNOWFLAKE_REGION }}
-          SF_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SF_PASS:     ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SF_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+      - name: Configure Snowflake CLI
         run: |
           mkdir -p "$HOME/.snowflake"
           cat > "$HOME/.snowflake/config.toml" <<EOF
@@ -86,33 +80,25 @@ jobs:
 
           [connections]
             [connections.ci]
-            account  = "${SF_ACCOUNT}"
+            account  = "${SF_LOCATOR}"
             region   = "${SF_REGION}"
-            user     = "${SF_USER}"
-            password = "${SF_PASS}"
-            role     = "${SF_ROLE}"
+            user     = "${SNOWFLAKE_USER}"
+            password = "${SNOWFLAKE_PASSWORD}"
+            role     = "${SNOWFLAKE_ROLE}"
           EOF
-                    chmod 600 "$HOME/.snowflake/config.toml"
-                    echo "✅ Snowflake CLI configured for ${SF_ACCOUNT}.${SF_REGION}"
+          chmod 600 "$HOME/.snowflake/config.toml"
+          echo "✅ Snowflake CLI configured"
 
-      # -----------------------------------------------------------
-      # 5. Probe connection
-      # -----------------------------------------------------------
-      - name: Probe Snowflake session identity (CLI)
+      - name: Probe Snowflake identity (CLI)
         run: |
           snow sql -q "
             SELECT
-              CURRENT_ORGANIZATION_NAME() AS ORG,
-              CURRENT_ACCOUNT_NAME()      AS ACCT,
-              CURRENT_ACCOUNT()           AS ACCOUNT_LOCATOR,
-              CURRENT_REGION()            AS REGION,
-              CURRENT_USER()              AS USERNAME,
-              CURRENT_ROLE()              AS ROLE;
+              CURRENT_ACCOUNT() AS ACCOUNT_LOCATOR,
+              CURRENT_REGION()  AS REGION,
+              CURRENT_USER()    AS USERNAME,
+              CURRENT_ROLE()    AS ROLE;
           "
 
-      # -----------------------------------------------------------
-      # 6. Setup Terraform
-      # -----------------------------------------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -121,88 +107,58 @@ jobs:
       - name: Terraform Init
         working-directory: terraform
         env:
-          snowflake_account:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
-          snowflake_region:   ${{ secrets.SNOWFLAKE_REGION }}
-          snowflake_user:     ${{ secrets.SNOWFLAKE_USER }}
-          snowflake_password: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          snowflake_role:     ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_ACCOUNT:  ${{ env.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ env.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ env.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ env.SNOWFLAKE_ROLE }}
         run: |
+          rm -rf .terraform .terraform.lock.hcl
           terraform init -upgrade -reconfigure
           terraform validate
 
-      # -----------------------------------------------------------
-      # 7. Terraform Plan
-      # -----------------------------------------------------------
+      - name: Debug provider ENV
+        working-directory: terraform
+        env:
+          SNOWFLAKE_ACCOUNT:  ${{ env.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ env.SNOWFLAKE_USER }}
+          SNOWFLAKE_ROLE:     ${{ env.SNOWFLAKE_ROLE }}
+        run: |
+          echo "SNOWFLAKE_ACCOUNT=$SNOWFLAKE_ACCOUNT"
+          echo "SNOWFLAKE_USER=$SNOWFLAKE_USER"
+          echo "SNOWFLAKE_ROLE=$SNOWFLAKE_ROLE"
+          test -n "$SNOWFLAKE_ACCOUNT"
+
       - name: Terraform Plan
         working-directory: terraform
         env:
           TF_INPUT: "false"
-          snowflake_account:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
-          snowflake_region:   ${{ secrets.SNOWFLAKE_REGION }}
-          snowflake_user:     ${{ secrets.SNOWFLAKE_USER }}
-          snowflake_password: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          snowflake_role:     ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_ACCOUNT:  ${{ env.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ env.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ env.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ env.SNOWFLAKE_ROLE }}
         run: |
-          echo "🔍 Using account: ${snowflake_account}.${snowflake_region}"
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
-          echo "📘 DB from manifest: ${DB_NAME}"
+          echo "DB from manifest: ${DB_NAME}"
           terraform plan -input=false -no-color \
             -var "create_database=${{ github.event.inputs.create_database }}" \
             -var "database_name=${DB_NAME}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
-            -var "resource_monitor_name=RM_CUSTOMER360" \
-            -var "snowflake_account=${snowflake_account}" \
-            -var "snowflake_region=${snowflake_region}" \
-            -var "snowflake_user=${snowflake_user}" \
-            -var "snowflake_password=${snowflake_password}" \
-            -var "snowflake_role=${snowflake_role}"
+            -var "resource_monitor_name=RM_CUSTOMER360"
 
-      # -----------------------------------------------------------
-      # 8. Terraform Apply (if requested)
-      # -----------------------------------------------------------
       - name: Terraform Apply
         if: ${{ github.event.inputs.apply == 'true' }}
         working-directory: terraform
         env:
           TF_INPUT: "false"
-          snowflake_account:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
-          snowflake_region:   ${{ secrets.SNOWFLAKE_REGION }}
-          snowflake_user:     ${{ secrets.SNOWFLAKE_USER }}
-          snowflake_password: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          snowflake_role:     ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_ACCOUNT:  ${{ env.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ env.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ env.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ env.SNOWFLAKE_ROLE }}
         run: |
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
-          echo "🚀 Applying Terraform for ${DB_NAME}"
+          echo "Applying for DB: ${DB_NAME}"
           terraform apply -auto-approve -input=false -no-color \
             -var "create_database=${{ github.event.inputs.create_database }}" \
             -var "database_name=${DB_NAME}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
-            -var "resource_monitor_name=RM_CUSTOMER360" \
-            -var "snowflake_account=${snowflake_account}" \
-            -var "snowflake_region=${snowflake_region}" \
-            -var "snowflake_user=${snowflake_user}" \
-            -var "snowflake_password=${snowflake_password}" \
-            -var "snowflake_role=${snowflake_role}"
-
-      # -----------------------------------------------------------
-      # 9. Execute SQL files (if selected)
-      # -----------------------------------------------------------
-      - name: Execute SQL scripts via Snowflake CLI
-        if: ${{ github.event.inputs.apply == 'true' && github.event.inputs.execute_sql == 'true' }}
-        run: |
-          echo "▶ Executing SQL files from build/sql/"
-          shopt -s nullglob
-          for f in build/sql/*.sql; do
-            echo "💡 Running: $f"
-            snow sql -f "$f"
-          done
-
-      # -----------------------------------------------------------
-      # 10. Upload artifacts
-      # -----------------------------------------------------------
-      - name: Upload rendered SQL
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rendered-sql
-          path: build/sql
+            -var "resource_monitor_name=RM_CUSTOMER360"
