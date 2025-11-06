@@ -82,18 +82,18 @@ jobs:
         run: |
           mkdir -p "$HOME/.snowflake"
           cat > "$HOME/.snowflake/config.toml" <<EOF
-default_connection_name = "ci"
+          default_connection_name = "ci"
 
-[connections]
-  [connections.ci]
-  account  = "${SF_ACCOUNT}"
-  region   = "${SF_REGION}"
-  user     = "${SF_USER}"
-  password = "${SF_PASS}"
-  role     = "${SF_ROLE}"
-EOF
-          chmod 600 "$HOME/.snowflake/config.toml"
-          echo "✅ Snowflake CLI configured for ${SF_ACCOUNT}.${SF_REGION}"
+          [connections]
+            [connections.ci]
+            account  = "${SF_ACCOUNT}"
+            region   = "${SF_REGION}"
+            user     = "${SF_USER}"
+            password = "${SF_PASS}"
+            role     = "${SF_ROLE}"
+          EOF
+                    chmod 600 "$HOME/.snowflake/config.toml"
+                    echo "✅ Snowflake CLI configured for ${SF_ACCOUNT}.${SF_REGION}"
 
       # -----------------------------------------------------------
       # 5. Probe connection
