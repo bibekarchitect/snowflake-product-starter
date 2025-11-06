@@ -166,7 +166,7 @@ jobs:
           USER:     ${{ secrets.SNOWFLAKE_USER }}
           PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
-          TF_VAR_snowflake_organization: ${{ secrets.SNOWFLAKE_ORGANIZATION }}
+          TF_VAR_snowflake_organization: ${{ secrets.SNOWFLAKE_ORG_NAME }}
         run: |
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           terraform plan -no-color -input=false \
