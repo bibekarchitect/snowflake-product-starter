@@ -1,4 +1,4 @@
-name: Publish Data Product (Snowflake + Terraform via profile w/ host)
+name: Publish Data Product (Snowflake + Terraform via profile)
 
 on:
   workflow_dispatch:
@@ -34,15 +34,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Validate required secrets ---
+      # Check required secrets
       - name: Validate Snowflake secrets
         env:
-          LOCATOR:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }} # e.g., UE47735
-          REGION:   ${{ secrets.SNOWFLAKE_REGION }}          # e.g., europe-west4.gcp
-          USER:     ${{ secrets.SNOWFLAKE_USER }}            # e.g., CICD_BOT
-          PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}            # e.g., CICD_SNOWFLAKE_DEPLOY
+          ORG_NAME:     ${{ secrets.SNOWFLAKE_ORG_NAME }}      # e.g., XYAUPKY
+          ACCT_NAME:    ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}  # e.g., XH85556
+          LOCATOR:      ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }} # e.g., UE47735
+          REGION:       ${{ secrets.SNOWFLAKE_REGION }}        # e.g., europe-west4.gcp
+          USER:         ${{ secrets.SNOWFLAKE_USER }}          # e.g., CICD_BOT
+          PASSWORD:     ${{ secrets.SNOWFLAKE_PASSWORD }}
+          ROLE:         ${{ secrets.SNOWFLAKE_ROLE }}          # e.g., CICD_SNOWFLAKE_DEPLOY
         run: |
+          : "${ORG_NAME:?Missing SNOWFLAKE_ORG_NAME (e.g. XYAUPKY)}"
+          : "${ACCT_NAME:?Missing SNOWFLAKE_ACCOUNT_NAME (e.g. XH85556)}"
           : "${LOCATOR:?Missing SNOWFLAKE_ACCOUNT_LOCATOR (e.g. UE47735)}"
           : "${REGION:?Missing SNOWFLAKE_REGION (e.g. europe-west4.gcp)}"
           : "${USER:?Missing SNOWFLAKE_USER}"
@@ -50,34 +54,37 @@ jobs:
           : "${ROLE:?Missing SNOWFLAKE_ROLE}"
           echo "✅ Secrets present."
 
-      # --- Write both configs with explicit HOST ---
+      # Write BOTH configs: provider (~/.snowflake/config) and CLI (~/.snowflake/config.toml)
       - name: Write Snowflake configs (provider + CLI)
         env:
-          LOCATOR:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
-          REGION:   ${{ secrets.SNOWFLAKE_REGION }}
-          USER:     ${{ secrets.SNOWFLAKE_USER }}
-          PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+          ORG_NAME:     ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          ACCT_NAME:    ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          LOCATOR:      ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
+          REGION:       ${{ secrets.SNOWFLAKE_REGION }}
+          USER:         ${{ secrets.SNOWFLAKE_USER }}
+          PASSWORD:     ${{ secrets.SNOWFLAKE_PASSWORD }}
+          ROLE:         ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.snowflake"
           HOST="${LOCATOR}.${REGION}.snowflakecomputing.com"
 
-          # 1) Provider profile TOML: ~/.snowflake/config (section [ci])
-          # Include host (primary), plus account & region for completeness.
+          # --- Provider TOML (used by Terraform provider) ---
+          # NOTE: The provider expects 'organizationname' and 'accountname' here.
           cat > "$HOME/.snowflake/config" <<EOF
           [ci]
-          host     = "${HOST}"
-          account  = "${LOCATOR}"
-          region   = "${REGION}"
-          user     = "${USER}"
-          password = "${PASSWORD}"
-          role     = "${ROLE}"
+          organizationname = "${ORG_NAME}"
+          accountname      = "${ACCT_NAME}"
+          user             = "${USER}"
+          password         = "${PASSWORD}"
+          role             = "${ROLE}"
+          # optional extras the provider can consume:
+          host             = "${HOST}"
+          protocol         = "https"
           EOF
           chmod 600 "$HOME/.snowflake/config"
 
-          # 2) CLI config TOML: ~/.snowflake/config.toml (connections.ci)
-          # snow CLI prefers 'host' when provided.
+          # --- snow CLI TOML (used by snow sql) ---
           cat > "$HOME/.snowflake/config.toml" <<EOF
           default_connection_name = "ci"
 
@@ -92,13 +99,11 @@ jobs:
           EOF
           chmod 600 "$HOME/.snowflake/config.toml"
 
-          # Export for provider
           echo "SNOWFLAKE_CONFIG_PATH=$HOME/.snowflake/config" >> $GITHUB_ENV
           echo "SNOWFLAKE_PROFILE=ci"                          >> $GITHUB_ENV
-          # Export for logs
           echo "SF_HOST=${HOST}"                               >> $GITHUB_ENV
 
-      # --- Tooling ---
+      # Tooling
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -114,13 +119,12 @@ jobs:
         run: |
           echo "Connecting to: ${SF_HOST}"
           snow --config-file "$HOME/.snowflake/config.toml" sql -q "
-            SELECT
-              CURRENT_ACCOUNT() AS ACCOUNT_LOCATOR,
-              CURRENT_REGION()  AS REGION,
-              CURRENT_USER()    AS USERNAME,
-              CURRENT_ROLE()    AS ROLE;"
+            SELECT CURRENT_ACCOUNT() AS ACCOUNT_LOCATOR,
+                   CURRENT_REGION()  AS REGION,
+                   CURRENT_USER()    AS USERNAME,
+                   CURRENT_ROLE()    AS ROLE;"
 
-      # --- Terraform ---
+      # Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -129,7 +133,6 @@ jobs:
       - name: Terraform Init
         working-directory: terraform
         env:
-          # Force provider to use the TOML profile (no env guessing)
           SNOWFLAKE_CONFIG_PATH: ${{ env.SNOWFLAKE_CONFIG_PATH }}
           SNOWFLAKE_PROFILE:     ${{ env.SNOWFLAKE_PROFILE }}
         run: |
@@ -145,9 +148,9 @@ jobs:
         run: |
           echo "Using config: $SNOWFLAKE_CONFIG_PATH"
           echo "Using profile: $SNOWFLAKE_PROFILE"
-          grep -n "^host"    "$SNOWFLAKE_CONFIG_PATH" || true
-          grep -n "^account" "$SNOWFLAKE_CONFIG_PATH" || true
-          grep -n "^region"  "$SNOWFLAKE_CONFIG_PATH" || true
+          echo "--- begin TOML ---"
+          sed -n '1,120p' "$SNOWFLAKE_CONFIG_PATH"
+          echo "--- end TOML ---"
 
       - name: Terraform Plan
         working-directory: terraform

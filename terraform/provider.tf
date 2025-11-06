@@ -1,6 +1,4 @@
-# Use the TOML profile written in the workflow:
-#   file:  $HOME/.snowflake/config
-#   block: [ci]
+# Provider reads ~/.snowflake/config [ci] written by the workflow
 provider "snowflake" {
   profile = "ci"
 }

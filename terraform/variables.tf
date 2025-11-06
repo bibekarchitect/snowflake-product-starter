@@ -6,7 +6,6 @@ variable "create_database" {
 variable "database_name" {
   type    = string
   default = "CUSTOMER360_DEV"
-
   validation {
     condition     = length(trim(var.database_name, " ")) > 0
     error_message = "database_name must be non-empty."
