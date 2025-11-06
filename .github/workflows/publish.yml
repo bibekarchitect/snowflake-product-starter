@@ -33,7 +33,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # --- Validate required secrets ---
+      # ---
+      # CORRECTED VALIDATION STEP:
+      # Switched to 'test -n' to correctly fail if secrets are empty strings.
+      # ---
       - name: Validate Snowflake secrets
         env:
           LOCATOR: ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
@@ -42,15 +45,17 @@ jobs:
           PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
           ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          : "${LOCATOR:?Missing SNOWFLAKE_ACCOUNT_LOCATOR (e.g. UE47735)}"
-          : "${REGION:?Missing SNOWFLAKE_REGION (e.g. europe-west4.gcp)}"
-          : "${USER:?Missing SNOWFLAKE_USER}"
-          : "${PASS:?Missing SNOWFLAKE_PASSWORD}"
-          : "${ROLE:?Missing SNOWFLAKE_ROLE}"
+          echo "Validating secrets..."
+          test -n "$LOCATOR" || { echo "❌ ERROR: SNOWFLAKE_ACCOUNT_LOCATOR is empty."; exit 1; }
+          test -n "$REGION"  || { echo "❌ ERROR: SNOWFLAKE_REGION is empty."; exit 1; }
+          test -n "$USER"    || { echo "❌ ERROR: SNOWFLAKE_USER is empty."; exit 1; }
+          test -n "$PASS"    || { echo "❌ ERROR: SNOWFLAKE_PASSWORD is empty."; exit 1; }
+          test -n "$ROLE"    || { echo "❌ ERROR: SNOWFLAKE_ROLE is empty."; exit 1; }
           echo "✅ Secrets verified."
 
       # ---
-      # CORRECTED STEP: Added id: set_env_vars and changed to $GITHUB_OUTPUT
+      # CORRECTED EXPORT STEP:
+      # Added id: set_env_vars and switched to $GITHUB_OUTPUT for robust variable passing.
       # ---
       - name: Export Snowflake ENV
         id: set_env_vars
@@ -76,7 +81,8 @@ jobs:
           sudo apt-get update && sudo apt-get install -y yq
 
       # ---
-      # CORRECTED STEP: Added env: block referencing the outputs from the step above
+      # CORRECTED CLI STEP:
+      # Explicitly reads variables from the 'set_env_vars' step output.
       # ---
       - name: Configure Snowflake CLI
         env:
@@ -117,7 +123,8 @@ jobs:
           terraform_version: "1.7.5"
 
       # ---
-      # CORRECTED STEP: Added env: block referencing outputs
+      # CORRECTED TERRAFORM STEPS:
+      # All Terraform steps now explicitly read variables from the 'set_env_vars' step output.
       # ---
       - name: Terraform Init
         working-directory: terraform
@@ -131,9 +138,6 @@ jobs:
           terraform init -upgrade -reconfigure
           terraform validate
 
-      # ---
-      # CORRECTED STEP: Added env: block referencing outputs and improved debug logging
-      # ---
       - name: Debug provider ENV
         working-directory: terraform
         env:
@@ -148,9 +152,6 @@ jobs:
           echo "--- END DEBUGGING ---"
           test -n "$SNOWFLAKE_ACCOUNT"
 
-      # ---
-      # CORRECTED STEP: Added env: block referencing outputs
-      # ---
       - name: Terraform Plan
         working-directory: terraform
         env:
@@ -165,12 +166,9 @@ jobs:
           terraform plan -input=false -no-color \
             -var "create_database=${{ github.event.inputs.create_database }}" \
             -var "database_name=${DB_NAME}" \
-            -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
+            -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER3C0_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
             -var "resource_monitor_name=RM_CUSTOMER360"
 
-      # ---
-      # CORRECTED STEP: Added env: block referencing outputs
-      # ---
       - name: Terraform Apply
         if: ${{ github.event.inputs.apply == 'true' }}
         working-directory: terraform
