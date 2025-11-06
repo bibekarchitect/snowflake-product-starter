@@ -1,4 +1,4 @@
-name: Publish Data Product (Manual, Explicit Vars)
+name: Publish Data Product (Manual, Snowflake CLI)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ on:
         type: boolean
         default: false
       execute_sql:
-        description: "Install SnowSQL & execute rendered SQL"
+        description: "Execute rendered SQL with Snowflake CLI"
         required: true
         type: boolean
         default: false
@@ -38,8 +38,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---- Fail fast if required secrets are missing in the selected Environment ----
-      - name: Validate Snowflake secrets (env-level)
+      # ---- Sanity: ensure required secrets exist in the selected Environment ----
+      - name: Validate required secrets
         env:
           SNOWFLAKE_ORG_NAME:     ${{ secrets.SNOWFLAKE_ORG_NAME }}
           SNOWFLAKE_ACCOUNT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
@@ -54,43 +54,53 @@ jobs:
           : "${SNOWFLAKE_ROLE:?Need SNOWFLAKE_ROLE in this Environment}"
           echo "All required Snowflake secrets are present."
 
-      # (Optional) masked probe (doesn't print values)
-      - name: Probe secrets presence (masked)
-        env:
-          SNOWFLAKE_ORG_NAME:     ${{ secrets.SNOWFLAKE_ORG_NAME }}
-          SNOWFLAKE_ACCOUNT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SNOWFLAKE_USER:         ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD:     ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:         ${{ secrets.SNOWFLAKE_ROLE }}
-        run: |
-          for v in SNOWFLAKE_ORG_NAME SNOWFLAKE_ACCOUNT_NAME SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_ROLE; do
-            if [ -n "${!v}" ]; then echo "$v=SET"; else echo "$v=EMPTY"; fi
-          done
-
-      # ---- Tooling ----
-      - uses: actions/setup-python@v5
+      # ---- Tooling: Python, Snowflake CLI, repo deps, yq ----
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install deps (Python, yq)
+      - name: Install Snowflake CLI + repo deps
         run: |
           python -m pip install --upgrade pip
+          pip install snowflake-cli
           pip install -r tools/requirements.txt
           sudo apt-get update && sudo apt-get install -y yq
 
-      - uses: hashicorp/setup-terraform@v3
+      # ---- Probe Snowflake session identity (proves org/account/role) ----
+      - name: Probe Snowflake session identity
+        env:
+          SNOW_ACCOUNT: ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOW_USER:    ${{ secrets.SNOWFLAKE_USER }}
+          SNOW_PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOW_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
+        run: |
+          snow sql \
+            -a "$SNOW_ACCOUNT" \
+            -u "$SNOW_USER" \
+            -p "$SNOW_PASS" \
+            -r "$SNOW_ROLE" \
+            -q "SELECT
+                  CURRENT_ORGANIZATION_NAME() AS ORG,
+                  CURRENT_ACCOUNT_NAME()      AS ACCT,
+                  CURRENT_ACCOUNT()           AS ACCOUNT_LOCATOR,
+                  CURRENT_REGION()            AS REGION,
+                  CURRENT_USER()              AS USERNAME,
+                  CURRENT_ROLE()              AS ROLE;"
+
+      # ---- Terraform ----
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.7.5
 
-      # ---- Terraform init/validate ----
       - name: Terraform Init & Validate
         working-directory: terraform
         run: |
           terraform init -upgrade
           terraform validate
 
-      # ---- Plan with explicit -var credentials (no env autodiscovery) ----
-      - name: Terraform Plan
+      - name: Terraform Plan (explicit vars)
         working-directory: terraform
         env:
           ORG_NAME:   ${{ secrets.SNOWFLAKE_ORG_NAME }}      # e.g., XYAUPKY
@@ -109,13 +119,12 @@ jobs:
             -var create_database=${{ github.event.inputs.create_database }} \
             -var "database_name=${DB_NAME}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
-            -var 'resource_monitor={"name":"RM_CUSTOMER360","monthly_credits_cap":500,"notify_at":[70,90,100]}'
+            -var 'resource_monitor_name="RM_CUSTOMER360"'
 
       - name: Render SQL (dry-run)
         run: python tools/runner.py render --manifest product.yml --out build/sql --dry-run
 
-      # ---- Apply infra ----
-      - name: Terraform Apply
+      - name: Terraform Apply (explicit vars)
         if: ${{ inputs.apply == true }}
         working-directory: terraform
         env:
@@ -135,32 +144,24 @@ jobs:
             -var create_database=${{ github.event.inputs.create_database }} \
             -var "database_name=${DB_NAME}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
-            -var 'resource_monitor={"name":"RM_CUSTOMER360","monthly_credits_cap":500,"notify_at":[70,90,100]}'
+            -var 'resource_monitor_name="RM_CUSTOMER360"'
 
-      - name: Render SQL
+      - name: Render SQL (apply mode)
         if: ${{ inputs.apply == true }}
         run: python tools/runner.py render --manifest product.yml --out build/sql
 
-      # ---- Optional: execute SQL via SnowSQL ----
-      - name: Install SnowSQL
-        if: ${{ inputs.apply == true && inputs.execute_sql == true }}
-        run: |
-          curl -sSfL https://sfc-repo.snowflakecomputing.com/snowsql/bootstrap/1.2/linux_x86_64/snowsql-1.2.29-linux_x86_64.bash -o snowsql.bash
-          bash snowsql.bash -y -i ./snowsql
-          echo "$GITHUB_WORKSPACE/snowsql/bin" >> $GITHUB_PATH
-          snowsql -v
-
-      - name: Execute SQL (in order)
+      # ---- Execute SQL using Snowflake CLI (optional) ----
+      - name: Execute SQL (snow CLI)
         if: ${{ inputs.apply == true && inputs.execute_sql == true }}
         env:
-          SNOWSQL_ACCOUNT: ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SNOWSQL_USER:    ${{ secrets.SNOWFLAKE_USER }}
-          SNOWSQL_PWD:     ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWSQL_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOW_ACCOUNT: ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOW_USER:    ${{ secrets.SNOWFLAKE_USER }}
+          SNOW_PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOW_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           for f in $(ls build/sql/*.sql | sort); do
             echo "==> $f"
-            snowsql -o exit_on_error=true -q "$(cat "$f")"
+            snow sql -a "$SNOW_ACCOUNT" -u "$SNOW_USER" -p "$SNOW_PASS" -r "$SNOW_ROLE" -f "$f"
           done
 
       # ---- Artifacts ----
