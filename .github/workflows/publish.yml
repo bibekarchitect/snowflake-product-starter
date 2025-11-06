@@ -1,91 +1,161 @@
-name: 🚀 Publish Data Product
+name: Publish Data Product (Snowflake + Terraform)
 
-# This workflow is triggered manually from the GitHub Actions tab
 on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to run against (e.g., dev, uat, prod)'
+        description: "Target environment (dev/uat/prod)"
         required: true
-        default: 'dev'
-        type: environment
+        type: choice
+        options: [dev, uat, prod]
+        default: dev
       apply:
-        description: 'Run terraform apply? (true/false)'
+        description: "Apply Terraform (true) or plan only (false)"
         required: true
-        default: 'false'
-        type: 'boolean'
-      # Adding this input based on the repo's README
+        type: boolean
+        default: false
       execute_sql:
-        description: 'Execute rendered SQL files? (true/false)'
+        description: "Execute rendered SQL with Snowflake CLI"
         required: true
-        default: 'false'
-        type: 'boolean'
+        type: boolean
+        default: false
+      create_database:
+        description: "Create DB from product.yml (needs privilege)"
+        required: true
+        type: boolean
+        default: false
 
 jobs:
-  plan-and-apply:
-    name: Terraform Plan & Apply
+  pipeline:
     runs-on: ubuntu-latest
-
-    # 1. CRITICAL FIX:
-    # This line tells the job to run inside the GitHub Environment you
-    # selected from the dropdown. This is what grants access to the secrets.
     environment: ${{ github.event.inputs.environment }}
 
-    # 2. CRITICAL FIX:
-    # This block maps the GitHub Environment Secrets (secrets.SNOWFLAKE_ACCOUNT)
-    # to the Environment Variables (SNOWFLAKE_ACCOUNT) that the
-    # Terraform Snowflake provider automatically looks for.
-    env:
-      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-      SNOWFLAKE_REGION: ${{ secrets.SNOWFLAKE_REGION }}
-      # This TF_VAR variable is how you pass the DB_NAME to Terraform
-      TF_VAR_db_name: ${{ env.DB_NAME_FROM_YML }}
-
     steps:
-      - name: ⬇️ Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 🏗️ Setup Terraform
+      # --- Validate required secrets ---
+      - name: Validate Snowflake secrets
+        env:
+          LOCATOR: ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
+          REGION:  ${{ secrets.SNOWFLAKE_REGION }}
+          USER:    ${{ secrets.SNOWFLAKE_USER }}
+          PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
+          ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
+        run: |
+          : "${LOCATOR:?Missing SNOWFLAKE_ACCOUNT_LOCATOR (e.g. UE47735)}"
+          : "${REGION:?Missing SNOWFLAKE_REGION (e.g. europe-west4.gcp)}"
+          : "${USER:?Missing SNOWFLAKE_USER}"
+          : "${PASS:?Missing SNOWFLAKE_PASSWORD}"
+          : "${ROLE:?Missing SNOWFLAKE_ROLE}"
+          echo "✅ Secrets verified."
+
+      # --- Export combined envs for TF & CLI ---
+      - name: Export Snowflake ENV
+        run: |
+          LOCATOR='${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}'
+          REGION='${{ secrets.SNOWFLAKE_REGION }}'
+          echo "SNOWFLAKE_ACCOUNT=${LOCATOR}.${REGION}" >> $GITHUB_ENV     # Terraform uses this
+          echo "SF_LOCATOR=${LOCATOR}" >> $GITHUB_ENV                      # CLI uses split values
+          echo "SF_REGION=${REGION}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_USER=${{ secrets.SNOWFLAKE_USER }}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_PASSWORD=${{ secrets.SNOWFLAKE_PASSWORD }}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_ROLE=${{ secrets.SNOWFLAKE_ROLE }}" >> $GITHUB_ENV
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Snowflake CLI & yq
+        run: |
+          python -m pip install --upgrade pip
+          pip install snowflake-cli
+          sudo apt-get update && sudo apt-get install -y yq
+
+      - name: Configure Snowflake CLI
+        run: |
+          mkdir -p "$HOME/.snowflake"
+          cat > "$HOME/.snowflake/config.toml" <<EOF
+          default_connection_name = "ci"
+
+          [connections]
+            [connections.ci]
+            account  = "${SF_LOCATOR}"
+            region   = "${SF_REGION}"
+            user     = "${SNOWFLAKE_USER}"
+            password = "${SNOWFLAKE_PASSWORD}"
+            role     = "${SNOWFLAKE_ROLE}"
+          EOF
+          chmod 600 "$HOME/.snowflake/config.toml"
+          echo "✅ Snowflake CLI configured"
+
+      - name: Probe Snowflake identity (CLI)
+        run: |
+          snow sql -q "
+            SELECT
+              CURRENT_ACCOUNT() AS ACCOUNT_LOCATOR,
+              CURRENT_REGION()  AS REGION,
+              CURRENT_USER()    AS USERNAME,
+              CURRENT_ROLE()    AS ROLE;
+          "
+
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
 
-      - name: 📦 Setup yq (for reading product.yml)
+      # ---
+      # CORRECTED STEP: The 'env:' block is removed.
+      # The 'run' script will now inherit the environment set by 'Export Snowflake ENV'.
+      # ---
+      - name: Terraform Init
+        working-directory: terraform
         run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
+          rm -rf .terraform .terraform.lock.hcl
+          terraform init -upgrade -reconfigure
+          terraform validate
 
-      - name: 📖 Read Database Name from product.yml
+      # ---
+      # CORRECTED STEP: The 'env:' block is removed.
+      # ---
+      - name: Debug provider ENV
+        working-directory: terraform
         run: |
-          DB_NAME=$(yq -r '.layout.database' ./product.yml)
-          echo "DB from manifest: $DB_NAME"
-          # Export it to be used by the TF_VAR in the main 'env:' block
-          echo "DB_NAME_FROM_YML=$DB_NAME" >> $GITHUB_ENV
+          echo "SNOWFLAKE_ACCOUNT=$SNOWFLAKE_ACCOUNT"
+          echo "SNOWFLAKE_USER=$SNOWFLAKE_USER"
+          echo "SNOWFLAKE_ROLE=$SNOWFLAKE_ROLE"
+          test -n "$SNOWFLAKE_ACCOUNT"
 
-      - name: 🔍 Debug Snowflake Credentials
+      # ---
+      # CORRECTED STEP: The 'env:' block is removed, *except* for TF_INPUT
+      # which is a variable specific to this step.
+      # ---
+      - name: Terraform Plan
+        working-directory: terraform
+        env:
+          TF_INPUT: "false" # This is fine, as it's not a secret
         run: |
-          if [ -z "$SNOWFLAKE_ACCOUNT" ]; then
-            echo "❌ ERROR: SNOWFLAKE_ACCOUNT is empty."
-            echo "   Please check your GitHub Environment Secrets."
-            exit 1
-          else
-            echo "✅ SNOWFLAKE_ACCOUNT is set."
-          fi
+          DB_NAME="$(yq -r '.layout.database' ../product.yml)"
+          echo "DB from manifest: ${DB_NAME}"
+          terraform plan -input=false -no-color \
+            -var "create_database=${{ github.event.inputs.create_database }}" \
+            -var "database_name=${DB_NAME}" \
+            -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
+            -var "resource_monitor_name=RM_CUSTOMER360"
 
-      - name:  Terraform Init
-        id: init
-        run: terraform init
-        working-directory: ./terraform
-
-      - name:  Terraform Plan
-        id: plan
-        run: terraform plan -no-color
-        working-directory: ./terraform
-
-      - name: 🚀 Terraform Apply
-        id: apply
-        # This step only runs if you selected 'true' for the 'apply' input
-        if: github.event.inputs.apply == 'true'
-        run: terraform apply -auto-approve -no-color
-        working-directory: ./terraform
+      # ---
+      # CORRECTED STEP: The 'env:' block is removed, *except* for TF_INPUT.
+      # ---
+      - name: Terraform Apply
+        if: ${{ github.event.inputs.apply == 'true' }}
+        working-directory: terraform
+        env:
+          TF_INPUT: "false" # This is fine
+        run: |
+          DB_NAME="$(yq -r '.layout.database' ../product.yml)"
+          echo "Applying for DB: ${DB_NAME}"
+          terraform apply -auto-approve -input=false -no-color \
+            -var "create_database=${{ github.event.inputs.create_database }}" \
+            -var "database_name=${DB_NAME}" \
+            -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
+            -var "resource_monitor_name=RM_CUSTOMER360"
