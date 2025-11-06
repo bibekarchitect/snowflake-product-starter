@@ -1,4 +1,4 @@
-name: Publish Data Product (Manual, Snowflake CLI)
+name: Publish Data Product (Manual, Snowflake CLI + CI Connection)
 
 on:
   workflow_dispatch:
@@ -7,7 +7,10 @@ on:
         description: "Target environment (dev/uat/prod)"
         required: true
         type: choice
-        options: [dev, uat, prod]
+        options:
+          - dev
+          - uat
+          - prod
         default: dev
       apply:
         description: "Apply Terraform (true) or plan only (false)"
@@ -41,11 +44,11 @@ jobs:
       # ---- Ensure required secrets exist in the selected Environment ----
       - name: Validate required secrets
         env:
-          SNOWFLAKE_ORG_NAME:     ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          SNOWFLAKE_ORG_NAME: ${{ secrets.SNOWFLAKE_ORG_NAME }}
           SNOWFLAKE_ACCOUNT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SNOWFLAKE_USER:         ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD:     ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:         ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           : "${SNOWFLAKE_ORG_NAME:?Need SNOWFLAKE_ORG_NAME in this Environment}"
           : "${SNOWFLAKE_ACCOUNT_NAME:?Need SNOWFLAKE_ACCOUNT_NAME in this Environment}"
@@ -58,7 +61,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install Snowflake CLI + repo deps
         run: |
@@ -67,16 +70,34 @@ jobs:
           pip install -r tools/requirements.txt
           sudo apt-get update && sudo apt-get install -y yq
 
-      # ---- Probe Snowflake session identity (uses ENV VARS, no --password) ----
-      - name: Probe Snowflake session identity
+      # ---- Configure Snowflake CLI connection profile [connections.ci] ----
+      - name: Configure Snowflake CLI connection (ci)
         env:
-          # snow CLI reads these automatically
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+          ORG_NAME: ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          ACCT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SF_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SF_PASS: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SF_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          snow sql -q "
+          mkdir -p "$HOME/.snowflake"
+          cat > "$HOME/.snowflake/config.toml" <<'EOF'
+          [connections.ci]
+          account  = "__ACCOUNT__"
+          user     = "__USER__"
+          password = "__PASS__"
+          role     = "__ROLE__"
+          EOF
+          sed -i "s/__ACCOUNT__/${ORG_NAME}-${ACCT_NAME}/" "$HOME/.snowflake/config.toml"
+          sed -i "s/__USER__/${SF_USER}/" "$HOME/.snowflake/config.toml"
+          sed -i "s/__PASS__/${SF_PASS}/" "$HOME/.snowflake/config.toml"
+          sed -i "s/__ROLE__/${SF_ROLE}/" "$HOME/.snowflake/config.toml"
+          chmod 600 "$HOME/.snowflake/config.toml"
+          echo "Created ~/.snowflake/config.toml with [connections.ci]"
+
+      # ---- Probe Snowflake session identity via the ci connection ----
+      - name: Probe Snowflake session identity (ci)
+        run: |
+          snow --connection ci sql -q "
             SELECT
               CURRENT_ORGANIZATION_NAME() AS ORG,
               CURRENT_ACCOUNT_NAME()      AS ACCT,
@@ -90,7 +111,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.5
+          terraform_version: "1.7.5"
 
       - name: Terraform Init & Validate
         working-directory: terraform
@@ -101,11 +122,11 @@ jobs:
       - name: Terraform Plan (explicit vars)
         working-directory: terraform
         env:
-          ORG_NAME:   ${{ secrets.SNOWFLAKE_ORG_NAME }}      # e.g., XYAUPKY
-          ACCT_NAME:  ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}  # e.g., XH85556
-          SF_USER:    ${{ secrets.SNOWFLAKE_USER }}
-          SF_PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SF_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
+          ORG_NAME: ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          ACCT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SF_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SF_PASS: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SF_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           DB_NAME="$(yq '.layout.database' ../product.yml)"
           terraform plan \
@@ -114,23 +135,23 @@ jobs:
             -var "snowflake_user=${SF_USER}" \
             -var "snowflake_password=${SF_PASS}" \
             -var "snowflake_role=${SF_ROLE}" \
-            -var create_database=${{ github.event.inputs.create_database }} \
+            -var "create_database=${{ github.event.inputs.create_database }}" \
             -var "database_name=${DB_NAME}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
-            -var 'resource_monitor_name="RM_CUSTOMER360"'
+            -var "resource_monitor_name=RM_CUSTOMER360"
 
       - name: Render SQL (dry-run)
         run: python tools/runner.py render --manifest product.yml --out build/sql --dry-run
 
       - name: Terraform Apply (explicit vars)
-        if: ${{ inputs.apply == true }}
+        if: ${{ github.event.inputs.apply == 'true' }}
         working-directory: terraform
         env:
-          ORG_NAME:   ${{ secrets.SNOWFLAKE_ORG_NAME }}
-          ACCT_NAME:  ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SF_USER:    ${{ secrets.SNOWFLAKE_USER }}
-          SF_PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SF_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
+          ORG_NAME: ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          ACCT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SF_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SF_PASS: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SF_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           DB_NAME="$(yq '.layout.database' ../product.yml)"
           terraform apply -auto-approve \
@@ -139,27 +160,23 @@ jobs:
             -var "snowflake_user=${SF_USER}" \
             -var "snowflake_password=${SF_PASS}" \
             -var "snowflake_role=${SF_ROLE}" \
-            -var create_database=${{ github.event.inputs.create_database }} \
+            -var "create_database=${{ github.event.inputs.create_database }}" \
             -var "database_name=${DB_NAME}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
-            -var 'resource_monitor_name="RM_CUSTOMER360"'
+            -var "resource_monitor_name=RM_CUSTOMER360"
 
       - name: Render SQL (apply mode)
-        if: ${{ inputs.apply == true }}
+        if: ${{ github.event.inputs.apply == 'true' }}
         run: python tools/runner.py render --manifest product.yml --out build/sql
 
-      # ---- Execute SQL using Snowflake CLI (ENV auth; NO --password) ----
-      - name: Execute SQL (snow CLI)
-        if: ${{ inputs.apply == true && inputs.execute_sql == true }}
-        env:
-          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+      # ---- Execute SQL using Snowflake CLI (uses ci connection) ----
+      - name: Execute SQL (snow CLI via ci)
+        if: ${{ github.event.inputs.apply == 'true' && github.event.inputs.execute_sql == 'true' }}
         run: |
-          for f in $(ls build/sql/*.sql 2>/dev/null | sort); do
+          shopt -s nullglob
+          for f in build/sql/*.sql; do
             echo "==> $f"
-            snow sql -f "$f"
+            snow --connection ci sql -f "$f"
           done
 
       # ---- Artifacts ----
@@ -171,11 +188,11 @@ jobs:
           path: build/sql
 
       - name: Generate DataHub recipe
-        if: ${{ inputs.catalog == true }}
+        if: ${{ github.event.inputs.catalog == 'true' }}
         run: python tools/runner.py catalog --manifest product.yml
 
       - name: Upload DataHub recipe
-        if: ${{ inputs.catalog == true }}
+        if: ${{ github.event.inputs.catalog == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: datahub-recipe
