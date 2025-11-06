@@ -49,17 +49,20 @@ jobs:
           : "${ROLE:?Missing SNOWFLAKE_ROLE}"
           echo "✅ Secrets verified."
 
-      # --- Export combined envs for TF & CLI ---
+      # ---
+      # CORRECTED STEP: Added id: set_env_vars and changed to $GITHUB_OUTPUT
+      # ---
       - name: Export Snowflake ENV
+        id: set_env_vars
         run: |
           LOCATOR='${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}'
           REGION='${{ secrets.SNOWFLAKE_REGION }}'
-          echo "SNOWFLAKE_ACCOUNT=${LOCATOR}.${REGION}" >> $GITHUB_ENV     # Terraform uses this
-          echo "SF_LOCATOR=${LOCATOR}" >> $GITHUB_ENV                      # CLI uses split values
-          echo "SF_REGION=${REGION}" >> $GITHUB_ENV
-          echo "SNOWFLAKE_USER=${{ secrets.SNOWFLAKE_USER }}" >> $GITHUB_ENV
-          echo "SNOWFLAKE_PASSWORD=${{ secrets.SNOWFLAKE_PASSWORD }}" >> $GITHUB_ENV
-          echo "SNOWFLAKE_ROLE=${{ secrets.SNOWFLAKE_ROLE }}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_ACCOUNT=${LOCATOR}.${REGION}" >> $GITHUB_OUTPUT
+          echo "SF_LOCATOR=${LOCATOR}" >> $GITHUB_OUTPUT
+          echo "SF_REGION=${REGION}" >> $GITHUB_OUTPUT
+          echo "SNOWFLAKE_USER=${{ secrets.SNOWFLAKE_USER }}" >> $GITHUB_OUTPUT
+          echo "SNOWFLAKE_PASSWORD=${{ secrets.SNOWFLAKE_PASSWORD }}" >> $GITHUB_OUTPUT
+          echo "SNOWFLAKE_ROLE=${{ secrets.SNOWFLAKE_ROLE }}" >> $GITHUB_OUTPUT
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -72,7 +75,16 @@ jobs:
           pip install snowflake-cli
           sudo apt-get update && sudo apt-get install -y yq
 
+      # ---
+      # CORRECTED STEP: Added env: block referencing the outputs from the step above
+      # ---
       - name: Configure Snowflake CLI
+        env:
+          SF_LOCATOR: ${{ steps.set_env_vars.outputs.SF_LOCATOR }}
+          SF_REGION: ${{ steps.set_env_vars.outputs.SF_REGION }}
+          SNOWFLAKE_USER: ${{ steps.set_env_vars.outputs.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ steps.set_env_vars.outputs.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ steps.set_env_vars.outputs.SNOWFLAKE_ROLE }}
         run: |
           mkdir -p "$HOME/.snowflake"
           cat > "$HOME/.snowflake/config.toml" <<EOF
@@ -105,35 +117,48 @@ jobs:
           terraform_version: "1.7.5"
 
       # ---
-      # CORRECTED STEP: The 'env:' block is removed.
-      # The 'run' script will now inherit the environment set by 'Export Snowflake ENV'.
+      # CORRECTED STEP: Added env: block referencing outputs
       # ---
       - name: Terraform Init
         working-directory: terraform
+        env:
+          SNOWFLAKE_ACCOUNT:  ${{ steps.set_env_vars.outputs.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ steps.set_env_vars.outputs.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ steps.set_env_vars.outputs.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ steps.set_env_vars.outputs.SNOWFLAKE_ROLE }}
         run: |
           rm -rf .terraform .terraform.lock.hcl
           terraform init -upgrade -reconfigure
           terraform validate
 
       # ---
-      # CORRECTED STEP: The 'env:' block is removed.
+      # CORRECTED STEP: Added env: block referencing outputs and improved debug logging
       # ---
       - name: Debug provider ENV
         working-directory: terraform
+        env:
+          SNOWFLAKE_ACCOUNT:  ${{ steps.set_env_vars.outputs.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ steps.set_env_vars.outputs.SNOWFLAKE_USER }}
+          SNOWFLAKE_ROLE:     ${{ steps.set_env_vars.outputs.SNOWFLAKE_ROLE }}
         run: |
-          echo "SNOWFLAKE_ACCOUNT=$SNOWFLAKE_ACCOUNT"
-          echo "SNOWFLAKE_USER=$SNOWFLAKE_USER"
-          echo "SNOWFLAKE_ROLE=$SNOWFLAKE_ROLE"
+          echo "--- DEBUGGING ENV (from step outputs) ---"
+          echo "SNOWFLAKE_ACCOUNT: [${SNOWFLAKE_ACCOUNT}]"
+          echo "SNOWFLAKE_USER: [${SNOWFLAKE_USER}]"
+          echo "SNOWFLAKE_ROLE: [${SNOWFLAKE_ROLE}]"
+          echo "--- END DEBUGGING ---"
           test -n "$SNOWFLAKE_ACCOUNT"
 
       # ---
-      # CORRECTED STEP: The 'env:' block is removed, *except* for TF_INPUT
-      # which is a variable specific to this step.
+      # CORRECTED STEP: Added env: block referencing outputs
       # ---
       - name: Terraform Plan
         working-directory: terraform
         env:
-          TF_INPUT: "false" # This is fine, as it's not a secret
+          TF_INPUT: "false"
+          SNOWFLAKE_ACCOUNT:  ${{ steps.set_env_vars.outputs.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ steps.set_env_vars.outputs.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ steps.set_env_vars.outputs.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ steps.set_env_vars.outputs.SNOWFLAKE_ROLE }}
         run: |
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           echo "DB from manifest: ${DB_NAME}"
@@ -144,13 +169,17 @@ jobs:
             -var "resource_monitor_name=RM_CUSTOMER360"
 
       # ---
-      # CORRECTED STEP: The 'env:' block is removed, *except* for TF_INPUT.
+      # CORRECTED STEP: Added env: block referencing outputs
       # ---
       - name: Terraform Apply
         if: ${{ github.event.inputs.apply == 'true' }}
         working-directory: terraform
         env:
-          TF_INPUT: "false" # This is fine
+          TF_INPUT: "false"
+          SNOWFLAKE_ACCOUNT:  ${{ steps.set_env_vars.outputs.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER:     ${{ steps.set_env_vars.outputs.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ steps.set_env_vars.outputs.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ steps.set_env_vars.outputs.SNOWFLAKE_ROLE }}
         run: |
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           echo "Applying for DB: ${DB_NAME}"
