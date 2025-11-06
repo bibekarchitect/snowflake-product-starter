@@ -54,3 +54,8 @@ variable "resource_monitor" {
   type    = any
   default = null
 }
+
+variable "snowflake_organization_name" {
+  description = "The name of your Snowflake organization."
+  type        = string
+}
