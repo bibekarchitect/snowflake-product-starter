@@ -1,10 +1,10 @@
-# Optionally create the database (controlled by create_database)
+# Create DB only if asked
 resource "snowflake_database" "db" {
   count = var.create_database ? 1 : 0
   name  = var.database_name
 }
 
-# Warehouses managed by Terraform (your role now has CREATE WAREHOUSE ON ACCOUNT)
+# Warehouses (requires CREATE WAREHOUSE ON ACCOUNT)
 resource "snowflake_warehouse" "ingest" {
   name             = var.warehouses.ingest
   warehouse_size   = "XSMALL"

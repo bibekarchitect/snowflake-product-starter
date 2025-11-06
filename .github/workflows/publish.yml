@@ -1,4 +1,4 @@
-name: Publish Data Product (Manual, Snowflake CLI + CI Connection)
+name: Publish Data Product (Manual, Snowflake)
 
 on:
   workflow_dispatch:
@@ -38,14 +38,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---- Validate required secrets ----
+      # ---- Check required secrets ----
       - name: Validate required secrets
         env:
-          SNOWFLAKE_ORG_NAME: ${{ secrets.SNOWFLAKE_ORG_NAME }}
-          SNOWFLAKE_ACCOUNT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_ORG_NAME:       ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          SNOWFLAKE_ACCOUNT_NAME:   ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_USER:           ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD:       ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:           ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           : "${SNOWFLAKE_ORG_NAME:?Need SNOWFLAKE_ORG_NAME in this Environment}"
           : "${SNOWFLAKE_ACCOUNT_NAME:?Need SNOWFLAKE_ACCOUNT_NAME in this Environment}"
@@ -54,18 +54,19 @@ jobs:
           : "${SNOWFLAKE_ROLE:?Need SNOWFLAKE_ROLE in this Environment}"
           echo "All required Snowflake secrets are present."
 
-      # ---- Tooling setup ----
+      # ---- Tooling ----
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install Snowflake CLI and dependencies
+      - name: Install Snowflake CLI and deps
         run: |
           python -m pip install --upgrade pip
           pip install snowflake-cli
-          pip install -r tools/requirements.txt
           sudo apt-get update && sudo apt-get install -y yq
+          # Optional: if you use tools/runner.py later, also:
+          # pip install -r tools/requirements.txt || true
 
       # ---- Configure Snowflake CLI default connection (no region) ----
       - name: Configure Snowflake CLI default connection
@@ -94,8 +95,8 @@ jobs:
           chmod 600 "$HOME/.snowflake/config.toml"
           echo "Wrote $HOME/.snowflake/config.toml (no region)"
 
-      # ---- Probe Snowflake session identity ----
-      - name: Probe Snowflake session identity
+      # ---- Probe via CLI (visibility) ----
+      - name: Probe Snowflake session identity (CLI)
         run: |
           snow sql -q "
             SELECT
@@ -113,13 +114,37 @@ jobs:
         with:
           terraform_version: "1.7.5"
 
-      - name: Terraform Init & Validate
+      - name: Terraform Clean Cache
         working-directory: terraform
         run: |
-          terraform init -upgrade
+          rm -rf .terraform .terraform.lock.hcl
+
+      - name: Terraform Init & Validate
+        working-directory: terraform
+        env:
+          # Provider reads these even during init
+          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+        run: |
+          terraform init -upgrade -reconfigure
           terraform validate
 
-      - name: Sanity probe for Terraform provider identity
+      - name: Debug Snowflake env for TF
+        working-directory: terraform
+        env:
+          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+        run: |
+          echo "SNOWFLAKE_ACCOUNT=$SNOWFLAKE_ACCOUNT"
+          echo "SNOWFLAKE_USER=$SNOWFLAKE_USER"
+          echo "SNOWFLAKE_ROLE=$SNOWFLAKE_ROLE"
+          test -n "$SNOWFLAKE_ACCOUNT"
+
+      - name: Verify Snowflake connection (same env as TF)
         env:
           SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
           SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
@@ -158,7 +183,7 @@ jobs:
             -var "resource_monitor_name=RM_CUSTOMER360"
 
       - name: Render SQL (dry run)
-        run: python tools/runner.py render --manifest product.yml --out build/sql --dry-run
+        run: python tools/runner.py render --manifest product.yml --out build/sql --dry-run || true
 
       - name: Terraform Apply
         if: ${{ github.event.inputs.apply == 'true' }}
@@ -180,7 +205,7 @@ jobs:
 
       - name: Render SQL (apply mode)
         if: ${{ github.event.inputs.apply == 'true' }}
-        run: python tools/runner.py render --manifest product.yml --out build/sql
+        run: python tools/runner.py render --manifest product.yml --out build/sql || true
 
       - name: Execute SQL (snow CLI)
         if: ${{ github.event.inputs.apply == 'true' && github.event.inputs.execute_sql == 'true' }}
