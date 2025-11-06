@@ -166,12 +166,12 @@ jobs:
           USER:     ${{ secrets.SNOWFLAKE_USER }}
           PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
-          TF_VAR_snowflake_organization: ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          ORG_NAME: ${{ secrets.SNOWFLAKE_ORG_NAME }}
         run: |
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           terraform plan -no-color -input=false \
             -var "snowflake_account=${ACCOUNT}" \
-            -var "snowflake_organization=${TF_VAR_snowflake_organization}" \
+            -var "snowflake_organization=${ORG_NAME}" \
             -var "snowflake_region=${REGION}" \
             -var "snowflake_user=${USER}" \
             -var "snowflake_password=${PASSWORD}" \
