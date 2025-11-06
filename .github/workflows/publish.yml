@@ -1,4 +1,4 @@
-name: Publish Data Product (Snowflake + Terraform via profile)
+name: Publish Data Product (Snowflake + Terraform via profile w/ host)
 
 on:
   workflow_dispatch:
@@ -37,34 +37,38 @@ jobs:
       # --- Validate required secrets ---
       - name: Validate Snowflake secrets
         env:
-          ORG_ACCT:  ${{ secrets.SNOWFLAKE_ORG_ACCOUNT }} # e.g., XYAUPKY-XH85556
-          REGION:    ${{ secrets.SNOWFLAKE_REGION }}       # e.g., europe-west4.gcp
-          USER:      ${{ secrets.SNOWFLAKE_USER }}         # e.g., CICD_BOT
-          PASSWORD:  ${{ secrets.SNOWFLAKE_PASSWORD }}
-          ROLE:      ${{ secrets.SNOWFLAKE_ROLE }}         # e.g., CICD_SNOWFLAKE_DEPLOY
+          LOCATOR:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }} # e.g., UE47735
+          REGION:   ${{ secrets.SNOWFLAKE_REGION }}          # e.g., europe-west4.gcp
+          USER:     ${{ secrets.SNOWFLAKE_USER }}            # e.g., CICD_BOT
+          PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}            # e.g., CICD_SNOWFLAKE_DEPLOY
         run: |
-          : "${ORG_ACCT:?Missing SNOWFLAKE_ORG_ACCOUNT (e.g. XYAUPKY-XH85556)}"
+          : "${LOCATOR:?Missing SNOWFLAKE_ACCOUNT_LOCATOR (e.g. UE47735)}"
           : "${REGION:?Missing SNOWFLAKE_REGION (e.g. europe-west4.gcp)}"
           : "${USER:?Missing SNOWFLAKE_USER}"
           : "${PASSWORD:?Missing SNOWFLAKE_PASSWORD}"
           : "${ROLE:?Missing SNOWFLAKE_ROLE}"
           echo "✅ Secrets present."
 
-      # --- Make both config files for provider and CLI ---
+      # --- Write both configs with explicit HOST ---
       - name: Write Snowflake configs (provider + CLI)
         env:
-          ORG_ACCT:  ${{ secrets.SNOWFLAKE_ORG_ACCOUNT }}
-          REGION:    ${{ secrets.SNOWFLAKE_REGION }}
-          USER:      ${{ secrets.SNOWFLAKE_USER }}
-          PASSWORD:  ${{ secrets.SNOWFLAKE_PASSWORD }}
-          ROLE:      ${{ secrets.SNOWFLAKE_ROLE }}
+          LOCATOR:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
+          REGION:   ${{ secrets.SNOWFLAKE_REGION }}
+          USER:     ${{ secrets.SNOWFLAKE_USER }}
+          PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
+          set -euo pipefail
           mkdir -p "$HOME/.snowflake"
+          HOST="${LOCATOR}.${REGION}.snowflakecomputing.com"
 
-          # 1) Provider TOML: ~/.snowflake/config (profile [ci])
+          # 1) Provider profile TOML: ~/.snowflake/config (section [ci])
+          # Include host (primary), plus account & region for completeness.
           cat > "$HOME/.snowflake/config" <<EOF
           [ci]
-          account  = "${ORG_ACCT}"
+          host     = "${HOST}"
+          account  = "${LOCATOR}"
           region   = "${REGION}"
           user     = "${USER}"
           password = "${PASSWORD}"
@@ -72,13 +76,15 @@ jobs:
           EOF
           chmod 600 "$HOME/.snowflake/config"
 
-          # 2) CLI TOML: ~/.snowflake/config.toml (connections.ci)
+          # 2) CLI config TOML: ~/.snowflake/config.toml (connections.ci)
+          # snow CLI prefers 'host' when provided.
           cat > "$HOME/.snowflake/config.toml" <<EOF
           default_connection_name = "ci"
 
           [connections]
             [connections.ci]
-            account  = "${ORG_ACCT}"
+            host     = "${HOST}"
+            account  = "${LOCATOR}"
             region   = "${REGION}"
             user     = "${USER}"
             password = "${PASSWORD}"
@@ -86,11 +92,11 @@ jobs:
           EOF
           chmod 600 "$HOME/.snowflake/config.toml"
 
-          # Export for later steps
-          echo "SNOWFLAKE_CONFIG_PATH=$HOME/.snowflake/config"   >> $GITHUB_ENV   # Provider file
-          echo "SNOWFLAKE_PROFILE=ci"                             >> $GITHUB_ENV   # Provider profile
-          echo "SF_ORG_ACCT=${ORG_ACCT}"                          >> $GITHUB_ENV   # For logs
-          echo "SF_REGION=${REGION}"                              >> $GITHUB_ENV
+          # Export for provider
+          echo "SNOWFLAKE_CONFIG_PATH=$HOME/.snowflake/config" >> $GITHUB_ENV
+          echo "SNOWFLAKE_PROFILE=ci"                          >> $GITHUB_ENV
+          # Export for logs
+          echo "SF_HOST=${HOST}"                               >> $GITHUB_ENV
 
       # --- Tooling ---
       - name: Setup Python
@@ -106,6 +112,7 @@ jobs:
 
       - name: Probe Snowflake identity (CLI)
         run: |
+          echo "Connecting to: ${SF_HOST}"
           snow --config-file "$HOME/.snowflake/config.toml" sql -q "
             SELECT
               CURRENT_ACCOUNT() AS ACCOUNT_LOCATOR,
@@ -122,7 +129,7 @@ jobs:
       - name: Terraform Init
         working-directory: terraform
         env:
-          # Tell provider to use the TOML profile (no env creds)
+          # Force provider to use the TOML profile (no env guessing)
           SNOWFLAKE_CONFIG_PATH: ${{ env.SNOWFLAKE_CONFIG_PATH }}
           SNOWFLAKE_PROFILE:     ${{ env.SNOWFLAKE_PROFILE }}
         run: |
@@ -138,9 +145,9 @@ jobs:
         run: |
           echo "Using config: $SNOWFLAKE_CONFIG_PATH"
           echo "Using profile: $SNOWFLAKE_PROFILE"
-          test -f "$SNOWFLAKE_CONFIG_PATH" && echo "Found provider config file."
-          grep -n "account" "$SNOWFLAKE_CONFIG_PATH" || true
-          grep -n "region"  "$SNOWFLAKE_CONFIG_PATH" || true
+          grep -n "^host"    "$SNOWFLAKE_CONFIG_PATH" || true
+          grep -n "^account" "$SNOWFLAKE_CONFIG_PATH" || true
+          grep -n "^region"  "$SNOWFLAKE_CONFIG_PATH" || true
 
       - name: Terraform Plan
         working-directory: terraform
