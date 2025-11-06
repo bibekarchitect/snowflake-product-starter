@@ -70,23 +70,23 @@ jobs:
       # ---- Probe Snowflake session identity (proves org/account/role) ----
       - name: Probe Snowflake session identity
         env:
-          SNOW_ACCOUNT: ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SNOW_USER:    ${{ secrets.SNOWFLAKE_USER }}
-          SNOW_PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOW_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          snow sql \
-            -a "$SNOW_ACCOUNT" \
-            -u "$SNOW_USER" \
-            -p "$SNOW_PASS" \
-            -r "$SNOW_ROLE" \
-            -q "SELECT
-                  CURRENT_ORGANIZATION_NAME() AS ORG,
-                  CURRENT_ACCOUNT_NAME()      AS ACCT,
-                  CURRENT_ACCOUNT()           AS ACCOUNT_LOCATOR,
-                  CURRENT_REGION()            AS REGION,
-                  CURRENT_USER()              AS USERNAME,
-                  CURRENT_ROLE()              AS ROLE;"
+          snow sql execute \
+            --account "$SNOWFLAKE_ACCOUNT" \
+            --user "$SNOWFLAKE_USER" \
+            --password "$SNOWFLAKE_PASSWORD" \
+            --role "$SNOWFLAKE_ROLE" \
+            --query "SELECT
+                        CURRENT_ORGANIZATION_NAME() AS ORG,
+                        CURRENT_ACCOUNT_NAME()      AS ACCT,
+                        CURRENT_ACCOUNT()           AS ACCOUNT_LOCATOR,
+                        CURRENT_REGION()            AS REGION,
+                        CURRENT_USER()              AS USERNAME,
+                        CURRENT_ROLE()              AS ROLE;"
 
       # ---- Terraform ----
       - name: Setup Terraform
@@ -154,14 +154,19 @@ jobs:
       - name: Execute SQL (snow CLI)
         if: ${{ inputs.apply == true && inputs.execute_sql == true }}
         env:
-          SNOW_ACCOUNT: ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
-          SNOW_USER:    ${{ secrets.SNOWFLAKE_USER }}
-          SNOW_PASS:    ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOW_ROLE:    ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           for f in $(ls build/sql/*.sql | sort); do
             echo "==> $f"
-            snow sql -a "$SNOW_ACCOUNT" -u "$SNOW_USER" -p "$SNOW_PASS" -r "$SNOW_ROLE" -f "$f"
+            snow sql execute \
+              --account "$SNOWFLAKE_ACCOUNT" \
+              --user "$SNOWFLAKE_USER" \
+              --password "$SNOWFLAKE_PASSWORD" \
+              --role "$SNOWFLAKE_ROLE" \
+              --file "$f"
           done
 
       # ---- Artifacts ----
