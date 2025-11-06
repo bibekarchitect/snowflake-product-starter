@@ -96,8 +96,13 @@ jobs:
 
       # ---- Probe Snowflake session identity via the ci connection ----
       - name: Probe Snowflake session identity (ci)
+        env:
+          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          snow --connection ci sql -q "
+          snow sql -q "
             SELECT
               CURRENT_ORGANIZATION_NAME() AS ORG,
               CURRENT_ACCOUNT_NAME()      AS ACCT,
@@ -170,13 +175,18 @@ jobs:
         run: python tools/runner.py render --manifest product.yml --out build/sql
 
       # ---- Execute SQL using Snowflake CLI (uses ci connection) ----
-      - name: Execute SQL (snow CLI via ci)
+      - name: Execute SQL (snow CLI via env)
         if: ${{ github.event.inputs.apply == 'true' && github.event.inputs.execute_sql == 'true' }}
+        env:
+          SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           shopt -s nullglob
           for f in build/sql/*.sql; do
             echo "==> $f"
-            snow --connection ci sql -f "$f"
+            snow sql -f "$f"
           done
 
       # ---- Artifacts ----
