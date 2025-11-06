@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---- Sanity: ensure required secrets exist in the selected Environment ----
+      # ---- Ensure required secrets exist in the selected Environment ----
       - name: Validate required secrets
         env:
           SNOWFLAKE_ORG_NAME:     ${{ secrets.SNOWFLAKE_ORG_NAME }}
@@ -67,26 +67,24 @@ jobs:
           pip install -r tools/requirements.txt
           sudo apt-get update && sudo apt-get install -y yq
 
-      # ---- Probe Snowflake session identity (proves org/account/role) ----
+      # ---- Probe Snowflake session identity (uses ENV VARS, no --password) ----
       - name: Probe Snowflake session identity
         env:
+          # snow CLI reads these automatically
           SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ORG_NAME }}-${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
           SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          snow sql execute \
-            --account "$SNOWFLAKE_ACCOUNT" \
-            --user "$SNOWFLAKE_USER" \
-            --password "$SNOWFLAKE_PASSWORD" \
-            --role "$SNOWFLAKE_ROLE" \
-            --query "SELECT
-                        CURRENT_ORGANIZATION_NAME() AS ORG,
-                        CURRENT_ACCOUNT_NAME()      AS ACCT,
-                        CURRENT_ACCOUNT()           AS ACCOUNT_LOCATOR,
-                        CURRENT_REGION()            AS REGION,
-                        CURRENT_USER()              AS USERNAME,
-                        CURRENT_ROLE()              AS ROLE;"
+          snow sql -q "
+            SELECT
+              CURRENT_ORGANIZATION_NAME() AS ORG,
+              CURRENT_ACCOUNT_NAME()      AS ACCT,
+              CURRENT_ACCOUNT()           AS ACCOUNT_LOCATOR,
+              CURRENT_REGION()            AS REGION,
+              CURRENT_USER()              AS USERNAME,
+              CURRENT_ROLE()              AS ROLE;
+          "
 
       # ---- Terraform ----
       - name: Setup Terraform
@@ -150,7 +148,7 @@ jobs:
         if: ${{ inputs.apply == true }}
         run: python tools/runner.py render --manifest product.yml --out build/sql
 
-      # ---- Execute SQL using Snowflake CLI (optional) ----
+      # ---- Execute SQL using Snowflake CLI (ENV auth; NO --password) ----
       - name: Execute SQL (snow CLI)
         if: ${{ inputs.apply == true && inputs.execute_sql == true }}
         env:
@@ -159,14 +157,9 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWFLAKE_ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          for f in $(ls build/sql/*.sql | sort); do
+          for f in $(ls build/sql/*.sql 2>/dev/null | sort); do
             echo "==> $f"
-            snow sql execute \
-              --account "$SNOWFLAKE_ACCOUNT" \
-              --user "$SNOWFLAKE_USER" \
-              --password "$SNOWFLAKE_PASSWORD" \
-              --role "$SNOWFLAKE_ROLE" \
-              --file "$f"
+            snow sql -f "$f"
           done
 
       # ---- Artifacts ----
