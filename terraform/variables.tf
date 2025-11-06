@@ -28,8 +28,8 @@ variable "database_name" {
   default = "CUSTOMER360_DEV"
 
   validation {
-    condition     = length(trim(var.database_name)) > 0
-    error_message = "database_name must be non-empty."
+    condition     = length(trim(var.database_name, " ")) > 0
+    error_message = "database_name must be non-empty or blank-only spaces."
   }
 }
 
