@@ -126,6 +126,12 @@ jobs:
       # CORRECTED TERRAFORM STEPS:
       # All Terraform steps now explicitly read variables from the 'set_env_vars' step output.
       # ---
+      # ---
+      # CORRECTED STEP:
+      # Added -cloud=false to 'terraform init' to force a local run.
+      # This ensures Terraform uses the local GitHub runner's environment variables
+      # instead of trying to run remotely in Terraform Cloud.
+      # ---
       - name: Terraform Init
         working-directory: terraform
         env:
@@ -135,7 +141,8 @@ jobs:
           SNOWFLAKE_ROLE:     ${{ steps.set_env_vars.outputs.SNOWFLAKE_ROLE }}
         run: |
           rm -rf .terraform .terraform.lock.hcl
-          terraform init -upgrade -reconfigure
+          # Force local execution, ignoring any 'cloud {}' backend
+          terraform init -upgrade -reconfigure -cloud=false
           terraform validate
 
       - name: Debug provider ENV
