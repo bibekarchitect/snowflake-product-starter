@@ -119,8 +119,11 @@ jobs:
       # Positively verify the CLI sees the connection and can connect
       - name: Verify Snowflake CLI connection profile
         run: |
+          # List available connections to confirm our config file is being read
           snow --config-file "$HOME/.snowflake/config.toml" connection list || true
-          snow --config-file "$HOME/.snowflake/config.toml" connection test ci
+
+          # Test the 'ci' connection explicitly
+          snow --config-file "$HOME/.snowflake/config.toml" connection test --connection ci
 
       - name: Probe Snowflake identity (CLI)
         run: |
