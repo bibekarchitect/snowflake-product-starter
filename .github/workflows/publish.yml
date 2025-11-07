@@ -64,17 +64,17 @@ jobs:
           terraform init -upgrade -reconfigure
           terraform validate
 
-      # - name: Debug provider profile usage
-      #   working-directory: terraform
-      #   env:
-      #     SNOWFLAKE_CONFIG_PATH: ${{ env.SNOWFLAKE_CONFIG_PATH }}
-      #     SNOWFLAKE_PROFILE:     ${{ env.SNOWFLAKE_PROFILE }}
-      #   run: |
-      #     echo "Using provider config: $SNOWFLAKE_CONFIG_PATH"
-      #     echo "Using profile:        $SNOWFLAKE_PROFILE"
-      #     echo "--- begin TOML ---"
-      #     sed -n '1,200p' "$SNOWFLAKE_CONFIG_PATH"
-      #     echo "--- end TOML ---"
+      - name: Debug provider profile usage
+        working-directory: terraform
+        env:
+          SNOWFLAKE_CONFIG_PATH: ${{ env.SNOWFLAKE_CONFIG_PATH }}
+          SNOWFLAKE_PROFILE:     ${{ env.SNOWFLAKE_PROFILE }}
+        run: |
+          echo "Using provider config: $SNOWFLAKE_CONFIG_PATH"
+          echo "Using profile:        $SNOWFLAKE_PROFILE"
+          echo "--- begin TOML ---"
+          sed -n '1,200p' "$SNOWFLAKE_CONFIG_PATH"
+          echo "--- end TOML ---"
 
       # - name: Preflight — prove CI role can create/drop a WH
       #   env:
@@ -120,8 +120,8 @@ jobs:
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           terraform plan -no-color -input=false \
             -var "database_name=${DB_NAME}" \
-            -var "create_database=${{ github.event.inputs.create_database }}" \
-            #-var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
+            -var "create_database=${{ github.event.inputs.create_database }}"
+            #-var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}'
             #-var "resource_monitor_name=RM_CUSTOMER360"
 
       - name: Terraform Apply
@@ -137,7 +137,7 @@ jobs:
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           terraform apply -auto-approve -no-color -input=false
              -var "database_name=${DB_NAME}" \
-             -var "create_database=${{ github.event.inputs.create_database }}" \
+             -var "create_database=${{ github.event.inputs.create_database }}" 
             #-var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
             #-var "resource_monitor_name=RM_CUSTOMER360"
 
