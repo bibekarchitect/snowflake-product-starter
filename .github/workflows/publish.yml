@@ -161,12 +161,18 @@ jobs:
       - name: Terraform Plan
         working-directory: terraform
         env:
-          ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
-          REGION:   ${{ secrets.SNOWFLAKE_REGION }}
-          USER:     ${{ secrets.SNOWFLAKE_USER }}
-          PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
-          ORG_NAME: ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          # ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
+          # REGION:   ${{ secrets.SNOWFLAKE_REGION }}
+          # USER:     ${{ secrets.SNOWFLAKE_USER }}
+          # PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          # ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}
+          # ORG_NAME: ${{ secrets.SNOWFLAKE_ORG_NAME }}
+          TF_VAR_snowflake_org:     ${{ secrets.SNOWFLAKE_ORG }}
+          TF_VAR_snowflake_account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          TF_VAR_snowflake_user:    ${{ secrets.SNOWFLAKE_USER }}
+          TF_VAR_snowflake_password: ${{ secrets.SNOWFLAKE_PASSWORD }} # Recommended
+          TF_VAR_snowflake_role:    ${{ secrets.SNOWFLAKE_ROLE }}
+          TF_VAR_snowflake_region:  ${{ secrets.SNOWFLAKE_REGION }}
         run: |
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           terraform plan -no-color -input=false \
