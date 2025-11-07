@@ -38,7 +38,7 @@ variable "database_name" {
 }
 
 variable "warehouses" {
-  type = object({
+  type = map({
     ingest    = string
     transform = string
     serve     = string
