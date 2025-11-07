@@ -43,6 +43,11 @@ variable "warehouses" {
     transform = string
     serve     = string
   })
+  default = {
+    ingest    = "CUSTOMER360_INGEST_WH"
+    transform = "CUSTOMER360_TRANSFORM_WH"
+    serve     = "CUSTOMER360_SERVE_WH"
+  }
 }
 
 variable "resource_monitor_name" {
