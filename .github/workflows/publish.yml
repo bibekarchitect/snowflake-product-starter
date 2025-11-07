@@ -129,6 +129,7 @@ jobs:
           TF_VAR_snowflake_password: ${{ secrets.SNOWFLAKE_PASSWORD }} # Recommended
           TF_VAR_snowflake_role:    ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
+          DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           terraform apply -auto-approve -no-color -input=false \
             -var "database_name=${DB_NAME}" \
             -var "create_database=${{ github.event.inputs.create_database }}" \
