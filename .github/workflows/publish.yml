@@ -134,7 +134,7 @@ jobs:
             -var "create_database=${{ github.event.inputs.create_database }}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
             -var "resource_monitor_name=RM_CUSTOMER360"
-            
+
       # Optional: execute SQL scripts after apply
       - name: Execute SQL scripts via Snowflake CLI
         if: ${{ github.event.inputs.apply == 'true' && github.event.inputs.execute_sql == 'true' }}
