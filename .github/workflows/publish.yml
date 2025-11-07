@@ -130,11 +130,11 @@ jobs:
           TF_VAR_snowflake_role:    ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
           # DB_NAME="$(yq -r '.layout.database' ../product.yml)"
-          terraform apply -auto-approve -no-color -input=false \
+          terraform apply -auto-approve -no-color -input=false
             # -var "database_name=${DB_NAME}" \
             # -var "create_database=${{ github.event.inputs.create_database }}" \
             #-var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
-            -var "resource_monitor_name=RM_CUSTOMER360"
+            #-var "resource_monitor_name=RM_CUSTOMER360"
 
       # Optional: execute SQL scripts after apply
       - name: Execute SQL scripts via Snowflake CLI
