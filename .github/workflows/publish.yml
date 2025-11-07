@@ -251,6 +251,13 @@ jobs:
           #   # -var "warehouses={\"ingest\":\"CUSTOMER360_INGEST_WH\",\"transform\":\"CUSTOMER360_TRANSFORM_WH\",\"serve\":\"CUSTOMER360_SERVE_WH\"}" \
           #   # -var "resource_monitor_name=RM_CUSTOMER360"
           terraform apply -auto-approve
+            -var "snowflake_account=${TF_VAR_snowflake_account}" \
+            -var "snowflake_org=${TF_VAR_snowflake_org}" \
+            -var "snowflake_region=${TF_VAR_snowflake_region}" \
+            -var "snowflake_user=${TF_VAR_snowflake_user}" \
+            -var "snowflake_password=${TF_VAR_snowflake_password}" \
+            -var "snowflake_role=${TF_VAR_snowflake_role}"
+            
           
 
       # Optional: execute SQL scripts after apply
