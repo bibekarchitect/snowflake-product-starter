@@ -1,7 +1,7 @@
-# resource "snowflake_database" "db" {
-#   count = var.create_database ? 1 : 0
-#   name  = var.database_name
-# }
+resource "snowflake_database" "db" {
+  count = var.create_database ? 1 : 0
+  name  = var.database_name
+}
 
 resource "snowflake_warehouse" "ingest" {
   name             = var.warehouses.ingest
