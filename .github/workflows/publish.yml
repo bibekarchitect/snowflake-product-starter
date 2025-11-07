@@ -112,7 +112,12 @@ jobs:
           TF_VAR_snowflake_password: ${{ secrets.SNOWFLAKE_PASSWORD }} # Recommended
           TF_VAR_snowflake_role:    ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          terraform plan -no-color -input=false
+          DB_NAME="$(yq -r '.layout.database' ../product.yml)"
+          terraform plan -no-color -input=false \
+            -var "database_name=${DB_NAME}" \
+            -var "create_database=${{ github.event.inputs.create_database }}" \
+            -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
+            -var "resource_monitor_name=RM_CUSTOMER360"
 
       - name: Terraform Apply
         if: ${{ github.event.inputs.apply == 'true' }}
@@ -124,4 +129,18 @@ jobs:
           TF_VAR_snowflake_password: ${{ secrets.SNOWFLAKE_PASSWORD }} # Recommended
           TF_VAR_snowflake_role:    ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          terraform apply -auto-approve
+          terraform apply -auto-approve -no-color -input=false \
+            -var "database_name=${DB_NAME}" \
+            -var "create_database=${{ github.event.inputs.create_database }}" \
+            -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
+            -var "resource_monitor_name=RM_CUSTOMER360"
+            
+      # Optional: execute SQL scripts after apply
+      - name: Execute SQL scripts via Snowflake CLI
+        if: ${{ github.event.inputs.apply == 'true' && github.event.inputs.execute_sql == 'true' }}
+        run: |
+          shopt -s nullglob
+          for f in build/sql/*.sql; do
+            echo "▶ $f"
+            snow --config-file "$HOME/.snowflake/config.toml" sql -f "$f"
+          done
