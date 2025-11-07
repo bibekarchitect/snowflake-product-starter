@@ -1,8 +1,16 @@
+# terraform {
+#   required_providers {
+#     snowflake = {
+#       source  = "snowflakedb/snowflake"
+#       version = ">= 1.0.0"
+#     }
+#   }
+# }
+
 terraform {
   required_providers {
     snowflake = {
-      source  = "snowflakedb/snowflake"
-      version = ">= 1.0.0"
+      source = "Snowflake-Labs/snowflake"
     }
   }
 }
