@@ -14,3 +14,10 @@ provider "snowflake" {
   password          = var.snowflake_password
   role              = var.snowflake_role
 }
+
+    terraform {
+      backend "gcs" {
+        bucket = "tw-tf-state-prod"
+        prefix = "terraform/state" # Optional: specify a path within the bucket
+      }
+    }
