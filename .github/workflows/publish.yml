@@ -176,12 +176,12 @@ jobs:
         run: |
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           terraform plan -no-color -input=false \
-            -var "snowflake_account=${ACCOUNT}" \
-            -var "snowflake_organization=${ORG_NAME}" \
-            -var "snowflake_region=${REGION}" \
-            -var "snowflake_user=${USER}" \
-            -var "snowflake_password=${PASSWORD}" \
-            -var "snowflake_role=${ROLE}" \
+            -var "snowflake_account=${TF_VAR_snowflake_account}" \
+            -var "snowflake_org=${TF_VAR_snowflake_org}" \
+            -var "snowflake_region=${TF_VAR_snowflake_region}" \
+            -var "snowflake_user=${TF_VAR_snowflake_user}" \
+            -var "snowflake_password=${TF_VAR_snowflake_password}" \
+            -var "snowflake_role=${TF_VAR_snowflake_role}" \
             -var "database_name=${DB_NAME}" \
             -var "create_database=${{ github.event.inputs.create_database }}" \
             -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
