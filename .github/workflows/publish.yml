@@ -158,6 +158,38 @@ jobs:
           sed -n '1,200p' "$SNOWFLAKE_CONFIG_PATH"
           echo "--- end TOML ---"
 
+      - name: Preflight — prove CI role can create/drop a WH
+        env:
+          LOCATOR:  ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}
+          REGION:   ${{ secrets.SNOWFLAKE_REGION }}
+          USER:     ${{ secrets.SNOWFLAKE_USER }}          # CICD_BOT
+          PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          ROLE:     ${{ secrets.SNOWFLAKE_ROLE }}          # the role you expect
+        run: |
+          python -m pip install --quiet --upgrade snowflake-cli
+          HOST="${LOCATOR}.${REGION}.snowflakecomputing.com"
+          mkdir -p "$HOME/.snowflake"
+          cat > "$HOME/.snowflake/config.toml" <<EOF
+          default_connection_name = "ci"
+          [connections.ci]
+          account  = "${LOCATOR}"
+          region   = "${REGION}"
+          host     = "${HOST}"
+          user     = "${USER}"
+          password = "${PASSWORD}"
+          role     = "${ROLE}"
+          EOF
+
+              echo "=== Identity ==="
+              snow --config-file "$HOME/.snowflake/config.toml" sql -q "
+                SELECT CURRENT_ACCOUNT() acct, CURRENT_REGION() region, CURRENT_USER() usr, CURRENT_ROLE() rl;"
+
+              echo "=== Try CREATE/DROP WAREHOUSE as CI session ==="
+              snow --config-file "$HOME/.snowflake/config.toml" sql -q "
+                CREATE WAREHOUSE IF NOT EXISTS TF_PRIV_CHECK_WH
+                  WAREHOUSE_SIZE='XSMALL' AUTO_SUSPEND=60 AUTO_RESUME=TRUE;
+                DROP WAREHOUSE IF EXISTS TF_PRIV_CHECK_WH;"
+                
       - name: Terraform Plan
         working-directory: terraform
         env:
