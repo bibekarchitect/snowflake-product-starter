@@ -212,7 +212,7 @@ jobs:
             # -var "snowflake_role=${TF_VAR_snowflake_role}" \
             -var "database_name=${DB_NAME}" \
             -var "create_database=${{ github.event.inputs.create_database }}" \
-            -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}' \
+            -var 'warehouses={"ingest":"CUSTOMER360_INGEST_WH","transform":"CUSTOMER360_TRANSFORM_WH","serve":"CUSTOMER360_SERVE_WH"}'
             -var "resource_monitor_name=RM_CUSTOMER360"
             # -var "database_name=${DB_NAME}" \
             # -var "create_database=${{ github.event.inputs.create_database }}" \
