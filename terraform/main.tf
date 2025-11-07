@@ -27,10 +27,10 @@ resource "snowflake_warehouse" "serve" {
   #resource_monitor = length(var.resource_monitor_name) > 0 ? var.resource_monitor_name : null
 }
 
-resource "snowflake_warehouse" "ingest1" {
-  name             = "TEST_TF_WH"
-  warehouse_size   = "XSMALL"
-  auto_suspend     = 60
-  auto_resume      = true
-  #resource_monitor = length(var.resource_monitor_name) > 0 ? var.resource_monitor_name : null
-}
+# resource "snowflake_warehouse" "ingest1" {
+#   name             = "TEST_TF_WH"
+#   warehouse_size   = "XSMALL"
+#   auto_suspend     = 60
+#   auto_resume      = true
+#   #resource_monitor = length(var.resource_monitor_name) > 0 ? var.resource_monitor_name : null
+# }
