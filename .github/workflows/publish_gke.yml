@@ -14,6 +14,10 @@ on:
         required: true
         type: boolean
         default: false
+      tf_dir:                    # <— NEW: path to your TF folder
+        description: "Terraform directory (repo-relative)"
+        required: true
+        default: "infra/gcp/terraform"     # change to e.g. "snowflake/terraform" if that’s your layout
 
 jobs:
   gke-infra:
