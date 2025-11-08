@@ -44,7 +44,10 @@ resource "google_compute_router_nat" "nat" {
   region                             = var.region
   nat_ip_allocate_option             = "AUTO_ONLY"
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-  log_config { enable = true, filter = "ERRORS_ONLY" }
+  log_config {
+  enable = true
+  filter = "ERRORS_ONLY"
+}
 }
 
 locals {
@@ -73,13 +76,17 @@ resource "google_container_cluster" "gke" {
   }
 
   dynamic "master_authorized_networks_config" {
-    for_each = length(var.master_authorized_cidrs) > 0 ? [1] : []
-    content {
-      cidr_blocks = [
-        for cidr in var.master_authorized_cidrs : { cidr_block = cidr, display_name = "allowed" }
-      ]
+  for_each = length(var.master_authorized_cidrs) > 0 ? [1] : []
+  content {
+    dynamic "cidr_blocks" {
+      for_each = var.master_authorized_cidrs
+      content {
+        cidr_block   = cidr_blocks.value
+        display_name = "allowed"
+      }
     }
   }
+}
 
   release_channel { channel = local.channel }
 
@@ -99,14 +106,33 @@ resource "google_container_node_pool" "default_pool" {
   node_config {
     machine_type = var.gke_machine_type
     oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-    workload_metadata_config { mode = "GKE_METADATA" }
-    labels = { workload = "datahub" }
-    metadata = { disable-legacy-endpoints = "true" }
-    shielded_instance_config { enable_secure_boot = true }
+
+    workload_metadata_config {
+      mode = "GKE_METADATA"
+    }
+
+    labels = {
+      workload = "datahub"
+    }
+
+    metadata = {
+      disable-legacy-endpoints = "true"
+    }
+
+    shielded_instance_config {
+      enable_secure_boot = true
+    }
   }
 
-  autoscaling { min_node_count = var.gke_min_nodes, max_node_count = var.gke_max_nodes }
-  management { auto_repair = true, auto_upgrade = true }
+  autoscaling {
+    min_node_count = var.gke_min_nodes
+    max_node_count = var.gke_max_nodes
+  }
+
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
 
   depends_on = [google_container_cluster.gke]
 }
