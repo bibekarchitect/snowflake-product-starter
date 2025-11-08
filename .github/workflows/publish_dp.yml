@@ -145,7 +145,7 @@ jobs:
           terraform validate
 
       - name: Debug provider profile usage
-        working-directory: terraform
+        working-directory: data-products/customer360/terraform
         env:
           SNOWFLAKE_CONFIG_PATH: ${{ env.SNOWFLAKE_CONFIG_PATH }}
           SNOWFLAKE_PROFILE:     ${{ env.SNOWFLAKE_PROFILE }}
