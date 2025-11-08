@@ -38,42 +38,62 @@ resource "snowflake_warehouse" "serve" {
 #   #resource_monitor = length(var.resource_monitor_name) > 0 ? var.resource_monitor_name : null
 # }
 
-# Attach the monitor via snowsql (ACCOUNTADMIN or equivalent)
 locals {
-  # map of the actual names from the resources just created
   wh_names = {
-    ingest   = snowflake_warehouse.ingest.name
-    transform= snowflake_warehouse.transform.name
-    serve    = snowflake_warehouse.serve.name
+    ingest    = snowflake_warehouse.ingest.name
+    transform = snowflake_warehouse.transform.name
+    serve     = snowflake_warehouse.serve.name
   }
 }
 
 resource "null_resource" "attach_rm" {
-  # only when a monitor name is provided
   for_each = var.resource_monitor_name == "" ? {} : local.wh_names
 
-  # make changes re-run if either name or RM changes
   triggers = {
     wh_name = each.value
     rm_name = var.resource_monitor_name
   }
 
   provisioner "local-exec" {
-    command = "snowsql -o exit_on_error=true -q \"ALTER WAREHOUSE IDENTIFIER('${each.value}') SET RESOURCE_MONITOR = IDENTIFIER('${var.resource_monitor_name}');\""
-    environment = {
-      SNOWSQL_ACCOUNT   = var.snowflake_account
-      SNOWSQL_USER      = var.svc_admin_user         # use a service admin user, NOT your personal ID
-      SNOWSQL_PWD       = var.svc_admin_password
-      SNOWSQL_ROLE      = "ACCOUNTADMIN"
-      # optionally:
-      # SNOWSQL_REGION  = var.snowflake_region
-      # SNOWSQL_WAREHOUSE = var.admin_wh
-      # SNOWSQL_DATABASE  = var.admin_db
-      # SNOWSQL_SCHEMA    = var.admin_schema
-    }
-  }
+  interpreter = ["bash", "-lc"]
+  command = <<EOT
+python3 -m pip install --quiet --disable-pip-version-check snowflake-connector-python
 
-  # ensure warehouses exist first
+cat <<'PY' > /tmp/attach_rm.py
+import os
+import snowflake.connector as sf
+
+acct  = os.environ["SNOW_ACCOUNT"]
+user  = os.environ["SNOW_USER"]
+pwd   = os.environ["SNOW_PWD"]
+role  = os.environ.get("SNOW_ROLE", "ACCOUNTADMIN")
+
+wh    = os.environ["WH_NAME"]
+rm    = os.environ["RM_NAME"]
+
+conn = sf.connect(account=acct, user=user, password=pwd, role=role)
+try:
+    with conn.cursor() as cs:
+        cs.execute(f"ALTER WAREHOUSE IDENTIFIER('{wh}') SET RESOURCE_MONITOR = IDENTIFIER('{rm}')")
+        print(f"Attached {rm} to {wh}")
+finally:
+    conn.close()
+PY
+
+python3 /tmp/attach_rm.py
+EOT
+
+  environment = {
+    WH_NAME      = each.value
+    RM_NAME      = var.resource_monitor_name
+
+    SNOW_ACCOUNT = var.snowflake_account
+    SNOW_USER    = var.svc_admin_user
+    SNOW_PWD     = var.svc_admin_password
+    SNOW_ROLE    = "ACCOUNTADMIN"
+  }
+}
+
   depends_on = [
     snowflake_warehouse.ingest,
     snowflake_warehouse.transform,
