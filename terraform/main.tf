@@ -38,7 +38,7 @@ resource "snowflake_warehouse" "serve" {
 #   #resource_monitor = length(var.resource_monitor_name) > 0 ? var.resource_monitor_name : null
 # }
 
-l# Attach the monitor via snowsql (ACCOUNTADMIN or equivalent)
+# Attach the monitor via snowsql (ACCOUNTADMIN or equivalent)
 locals {
   # map of the actual names from the resources just created
   wh_names = {
