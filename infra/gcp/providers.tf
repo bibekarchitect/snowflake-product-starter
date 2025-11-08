@@ -6,3 +6,10 @@ provider "google-beta" {
   project = var.project_id
   region  = var.region
 }
+
+terraform {
+      backend "gcs" {
+        bucket = "tw-tf-state-prod"
+        prefix = "terraform/gke-state" # Optional: specify a path within the bucket
+      }
+    }
