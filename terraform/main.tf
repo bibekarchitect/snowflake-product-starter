@@ -38,17 +38,45 @@ resource "snowflake_warehouse" "serve" {
 #   #resource_monitor = length(var.resource_monitor_name) > 0 ? var.resource_monitor_name : null
 # }
 
+l# Attach the monitor via snowsql (ACCOUNTADMIN or equivalent)
 locals {
-  wh_resources = {
-    ingest    = snowflake_warehouse.ingest
-    transform = snowflake_warehouse.transform
-    serve     = snowflake_warehouse.serve
+  # map of the actual names from the resources just created
+  wh_names = {
+    ingest   = snowflake_warehouse.ingest.name
+    transform= snowflake_warehouse.transform.name
+    serve    = snowflake_warehouse.serve.name
   }
 }
 
-resource "snowflake_sql" "attach_rm" {
-  provider = snowflake.admin
-  for_each = var.resource_monitor_name == "" ? {} : local.wh_resources
-  sql      = "ALTER WAREHOUSE IDENTIFIER('${each.value.name}') SET RESOURCE_MONITOR = IDENTIFIER('${var.resource_monitor_name}');"
-  depends_on = [each.value]
+resource "null_resource" "attach_rm" {
+  # only when a monitor name is provided
+  for_each = var.resource_monitor_name == "" ? {} : local.wh_names
+
+  # make changes re-run if either name or RM changes
+  triggers = {
+    wh_name = each.value
+    rm_name = var.resource_monitor_name
+  }
+
+  provisioner "local-exec" {
+    command = "snowsql -o exit_on_error=true -q \"ALTER WAREHOUSE IDENTIFIER('${each.value}') SET RESOURCE_MONITOR = IDENTIFIER('${var.resource_monitor_name}');\""
+    environment = {
+      SNOWSQL_ACCOUNT   = var.snowflake_account
+      SNOWSQL_USER      = var.svc_admin_user         # use a service admin user, NOT your personal ID
+      SNOWSQL_PWD       = var.svc_admin_password
+      SNOWSQL_ROLE      = "ACCOUNTADMIN"
+      # optionally:
+      # SNOWSQL_REGION  = var.snowflake_region
+      # SNOWSQL_WAREHOUSE = var.admin_wh
+      # SNOWSQL_DATABASE  = var.admin_db
+      # SNOWSQL_SCHEMA    = var.admin_schema
+    }
+  }
+
+  # ensure warehouses exist first
+  depends_on = [
+    snowflake_warehouse.ingest,
+    snowflake_warehouse.transform,
+    snowflake_warehouse.serve
+  ]
 }
