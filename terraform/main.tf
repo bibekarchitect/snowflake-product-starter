@@ -63,18 +63,20 @@ cat <<'PY' > /tmp/attach_rm.py
 import os
 import snowflake.connector as sf
 
-acct  = os.environ["SNOW_ACCOUNT"]
-user  = os.environ["SNOW_USER"]
-pwd   = os.environ["SNOW_PWD"]
-role  = os.environ.get("SNOW_ROLE", "ACCOUNTADMIN")
+account = os.environ["SNOW_ACCOUNT"]
+user    = os.environ["SNOW_USER"]
+pwd     = os.environ["SNOW_PWD"]
+role    = os.environ.get("SNOW_ROLE", "ACCOUNTADMIN")
+wh      = os.environ["WH_NAME"]
+rm      = os.environ["RM_NAME"]
 
-wh    = os.environ["WH_NAME"]
-rm    = os.environ["RM_NAME"]
-
-conn = sf.connect(account=acct, user=user, password=pwd, role=role)
+conn = sf.connect(account=account, user=user, password=pwd, role=role)
 try:
     with conn.cursor() as cs:
-        cs.execute(f"ALTER WAREHOUSE IDENTIFIER('{wh}') SET RESOURCE_MONITOR = IDENTIFIER('{rm}')")
+        # ATTACH monitor: RM must be a STRING literal, not IDENTIFIER()
+        cs.execute(
+            f"ALTER WAREHOUSE IDENTIFIER('{wh}') SET RESOURCE_MONITOR = '{rm}'"
+        )
         print(f"Attached {rm} to {wh}")
 finally:
     conn.close()
