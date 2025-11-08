@@ -115,7 +115,7 @@ jobs:
 
       # CRITICAL: unset any SNOWFLAKE_* env that could override the profile with empties
       - name: Terraform Init
-        working-directory: terraform
+        working-directory: data-products/customer360/terraform
         run: |
           terraform init -upgrade -reconfigure
           terraform validate
@@ -165,7 +165,7 @@ jobs:
       #           DROP WAREHOUSE IF EXISTS TF_PRIV_CHECK_WH;"
 
       - name: Terraform Plan
-        working-directory: terraform
+        working-directory: data-products/customer360/terraform
         env:
           TF_VAR_snowflake_org:     ${{ secrets.SNOWFLAKE_ORG }}
           TF_VAR_snowflake_account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
@@ -183,7 +183,7 @@ jobs:
 
       - name: Terraform Apply
         if: ${{ github.event.inputs.apply == 'true' }}
-        working-directory: terraform
+        working-directory: data-products/customer360/terraform
         env:
           TF_VAR_snowflake_org:     ${{ secrets.SNOWFLAKE_ORG }}
           TF_VAR_snowflake_account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
