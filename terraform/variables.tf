@@ -16,6 +16,15 @@ variable "snowflake_password" {
   sensitive = true
 }
 
+variable "svc_admin_user" {
+  type = string
+}
+
+variable "svc_admin_password" {
+  type      = string
+  sensitive = true
+}
+
 variable "snowflake_role" {
   type = string
 }

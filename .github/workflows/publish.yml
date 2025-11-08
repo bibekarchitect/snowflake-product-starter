@@ -172,6 +172,8 @@ jobs:
           TF_VAR_snowflake_user:    ${{ secrets.SNOWFLAKE_USER }}
           TF_VAR_snowflake_password: ${{ secrets.SNOWFLAKE_PASSWORD }} # Recommended
           TF_VAR_snowflake_role:    ${{ secrets.SNOWFLAKE_ROLE }}
+          TF_VAR_svc_admin_user:    ${{ secrets.ADMIN_USER }}
+          TF_VAR_svc_admin_password: ${{ secrets.ADMIN_USER_PASSWORD }}
         run: |
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           terraform plan -no-color -input=false \
@@ -188,6 +190,8 @@ jobs:
           TF_VAR_snowflake_user:    ${{ secrets.SNOWFLAKE_USER }}
           TF_VAR_snowflake_password: ${{ secrets.SNOWFLAKE_PASSWORD }} # Recommended
           TF_VAR_snowflake_role:    ${{ secrets.SNOWFLAKE_ROLE }}
+          TF_VAR_svc_admin_user:    ${{ secrets.ADMIN_USER }}
+          TF_VAR_svc_admin_password: ${{ secrets.ADMIN_USER_PASSWORD }}
         run: |
           DB_NAME="$(yq -r '.layout.database' ../product.yml)"
           terraform apply -auto-approve -no-color -input=false \
