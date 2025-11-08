@@ -87,7 +87,7 @@ EOT
     WH_NAME      = each.value
     RM_NAME      = var.resource_monitor_name
 
-    SNOW_ACCOUNT = "xyaupky-xh85556.europe-west4.gcp"
+    SNOW_ACCOUNT = "xyaupky-xh85556"
     SNOW_USER    = var.svc_admin_user
     SNOW_PWD     = var.svc_admin_password
     SNOW_ROLE    = "ACCOUNTADMIN"
