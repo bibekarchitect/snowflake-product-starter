@@ -165,3 +165,19 @@ jobs:
         run: |
           echo "raw='${{ github.event.inputs.plan_only }}'"
           echo "as-bool='${{ fromJSON(github.event.inputs.plan_only || 'false') }}'"
+      
+      - name: Wait for Elasticsearch
+        if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
+        run: |
+          kubectl -n datahub rollout status statefulset/elasticsearch-master --timeout=10m
+
+      - name: Reset ES setup job
+        if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
+        run: |
+          kubectl -n datahub delete job datahub-elasticsearch-setup-job --ignore-not-found
+
+      - name: Upgrade DataHub (pick up ES auth)
+        if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
+        run: |
+          helm upgrade datahub datahub/datahub -n datahub \
+            -f infra/datahub/values/values.prod.yaml

@@ -10,6 +10,15 @@ global:
   datahub:
     hostname: "datahub.example.dev"   # set if using Ingress later
     port: 443
+  elasticsearch:
+    host: "elasticsearch-master"
+    port: 9200
+    useSSL: true      # Elastic chart uses TLS by default
+    insecure: true    # skip TLS verification inside cluster
+    username: "elastic"
+    passwordSecretRef:
+      name: elasticsearch-master-credentials   # created by Elastic Helm chart
+      key: password
 
 datahub-gms:
   extraEnv:
@@ -74,3 +83,4 @@ extraContainers:
 
 datahub-ingestion-cron:
   enabled: false
+
