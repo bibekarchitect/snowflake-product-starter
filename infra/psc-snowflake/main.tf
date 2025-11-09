@@ -24,7 +24,7 @@ resource "google_compute_address" "psc_ip" {
   depends_on = [google_project_service.apis]
 }
 
-# PSC consumer endpoint (forwarding rule) – use google-beta and keep minimal
+# PSC consumer endpoint (forwarding rule)
 resource "google_compute_forwarding_rule" "psc_endpoint" {
   provider   = google-beta
   name       = "psc-snowflake-endpoint"
@@ -32,14 +32,29 @@ resource "google_compute_forwarding_rule" "psc_endpoint" {
   network    = var.network
   subnetwork = var.subnet
 
-  # Must be the self_link, not the IP string
-  #ip_address = google_compute_address.psc_ip.self_link
+  # IMPORTANT:
+  # 1) Use self_link (URL), not the raw IP string
+  ip_address = google_compute_address.psc_ip.self_link
 
-  # Snowflake serviceAttachment URI for your region
-  target     = var.snowflake_service_attachment
+  # 2) Explicitly set empty scheme to prevent the provider from defaulting EXTERNAL
+  load_balancing_scheme = ""  # <-- critical for PSC consumer
 
-  # optional:
+  # Snowflake-provided serviceAttachment URI (must match your region)
+  target = var.snowflake_service_attachment
+
+  # Optional, if you need cross-region consumption
   # allow_psc_global_access = true
+
+  # Defensive: ignore fields some provider builds try to inject on PSC
+  lifecycle {
+    ignore_changes = [
+      is_mirroring_collector,
+      ip_protocol,
+      ports,
+      labels,                # avoid label diffs if your org injects defaults
+      load_balancing_scheme, # extra guard even though we set ""
+    ]
+  }
 
   depends_on = [google_compute_address.psc_ip]
 }
