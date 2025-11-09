@@ -17,7 +17,7 @@ on:
       tf_dir:                    # <— NEW: path to your TF folder
         description: "Terraform directory (repo-relative)"
         required: true
-        default: "infra/gcp/terraform"     # change to e.g. "snowflake/terraform" if that’s your layout
+        default: "infra/gcp"     # change to e.g. "snowflake/terraform" if that’s your layout
 
 jobs:
   gke-infra:
@@ -41,20 +41,20 @@ jobs:
           terraform_version: 1.7.5
 
       - name: Terraform Init
-        working-directory: infra/gcp/terraform
+        working-directory: infra/gcp
         run: |
           terraform init -upgrade -reconfigure
           terraform validate
-          
+
       - name: Terraform Plan
-        working-directory: infra/gcp/terraform
+        working-directory: infra/gcp
         run: |
           terraform plan -input=false -no-color \
             -var-file="envs/${{ github.event.inputs.environment }}.tfvars"
 
       - name: Terraform Apply
         if: ${{ github.event.inputs.apply == 'true' }}
-        working-directory:  infra/gcp/terraform
+        working-directory:  infra/gcp
         run: |
           terraform apply -auto-approve -input=false -no-color \
             -var-file="envs/${{ github.event.inputs.environment }}.tfvars"
