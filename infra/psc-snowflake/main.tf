@@ -13,13 +13,19 @@ resource "google_compute_address" "psc_ip" {
 }
 
 resource "google_compute_forwarding_rule" "psc_endpoint" {
-  name                  = "psc-snowflake-endpoint"
-  region                = var.region
-  network               = var.network
-  subnetwork            = var.subnet
-  load_balancing_scheme = "INTERNAL"
-  ip_address            = google_compute_address.psc_ip.self_link
-  target                = var.snowflake_service_attachment
+  name       = "psc-snowflake-endpoint"
+  region     = var.region
+  network    = var.network
+  subnetwork = var.subnet
+
+  # reserved internal IP for the endpoint
+  ip_address = google_compute_address.psc_ip.self_link
+
+  # PSC target must be a serviceAttachment URI (from Snowflake)
+  target     = var.snowflake_service_attachment
+
+  # optional:
+  # allow_psc_global_access = true
 }
 
 resource "google_dns_managed_zone" "private_zone" {
