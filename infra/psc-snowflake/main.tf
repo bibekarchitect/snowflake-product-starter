@@ -32,13 +32,13 @@ resource "google_compute_forwarding_rule" "psc_endpoint" {
   network    = var.network
   subnetwork = var.subnet
 
-  # Use the literal IP string to avoid provider confusion
-  ip_address = google_compute_address.psc_ip.address
+  # Must be the self_link, not the IP string
+  ip_address = google_compute_address.psc_ip.self_link
 
-  # Snowflake-provided serviceAttachment URI for your region
+  # Snowflake serviceAttachment URI for your region
   target     = var.snowflake_service_attachment
 
-  # optional: uncomment if you want cross-region consumers
+  # optional:
   # allow_psc_global_access = true
 
   depends_on = [google_compute_address.psc_ip]
