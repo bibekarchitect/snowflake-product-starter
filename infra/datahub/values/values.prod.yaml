@@ -10,6 +10,7 @@ global:
   datahub:
     hostname: "datahub.example.dev"   # set if using Ingress later
     port: 443
+    
   elasticsearch:
     host: "elasticsearch-master"
     port: 9200
