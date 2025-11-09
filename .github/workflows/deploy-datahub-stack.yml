@@ -179,13 +179,25 @@ jobs:
         if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
         run: |
           kubectl -n datahub delete job datahub-elasticsearch-setup-job --ignore-not-found
+          
+      - name: Hard reset Helm release "datahub"
+        if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
+        run: |
+            set -e
+            NS=datahub
+            REL=datahub
+            # Uninstall if exists (ignore errors)
+            helm -n "$NS" uninstall "$REL" || true
+            # Remove any leftover Helm release records (secrets/configmaps)
+            kubectl -n "$NS" delete secret    -l "owner=helm,name=$REL" --ignore-not-found
+            kubectl -n "$NS" delete configmap -l "owner=helm,name=$REL" --ignore-not-found
 
       - name: Upgrade DataHub (pick up ES auth)
         if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
         run: |
           helm upgrade datahub datahub/datahub -n datahub \
             -f infra/datahub/values/values.prod.yaml
-            
+
       - name: Clear pending Helm release (if any)
         if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
         run: |
