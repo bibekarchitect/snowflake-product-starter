@@ -14,6 +14,11 @@ on:
         required: true
         type: boolean
         default: false
+      destroy:
+        description: destroy Terraform resources after apply (true or false)
+        required: true
+        type: boolean
+        default: false
       tf_dir:                    # <— NEW: path to your TF folder
         description: "Terraform directory (repo-relative)"
         required: true
