@@ -1,0 +1,69 @@
+name: Publish PSC Snowflake
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options: [dev, prod]
+        default: dev
+      apply:
+        description: Apply Terraform (true) or plan only (false)
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  psc-infra:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # if you use WIF; otherwise JSON key auth works too
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Auth: choose ONE of the following blocks
+
+      # (A) Workload Identity Federation (recommended)
+      #- name: Auth to Google (OIDC)
+      #  uses: google-github-actions/auth@v2
+      #  with:
+      #    workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+      #    service_account: ${{ secrets.GCP_TF_SERVICE_ACCOUNT }}
+      #    token_format: access_token
+
+      # (B) Service Account JSON (what you’re using)
+      - name: Auth to Google (JSON)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_JSON }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform Init (GCS backend)
+        working-directory: infra/psc-snowflake
+        run: |
+          terraform init -reconfigure \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="prefix=envs/${{ github.event.inputs.environment }}/psc" \
+            -backend-config="project=${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Terraform Plan
+        working-directory: infra/psc-snowflake
+        run: |
+          terraform plan -input=false -no-color \
+            -var-file="envs/${{ github.event.inputs.environment }}.tfvars"
+
+      - name: Terraform Apply
+        if: ${{ github.event.inputs.apply == 'true' }}
+        working-directory: infra/psc-snowflake
+        run: |
+          terraform apply -auto-approve -input=false -no-color \
+            -var-file="envs/${{ github.event.inputs.environment }}.tfvars"
