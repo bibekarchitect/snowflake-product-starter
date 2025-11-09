@@ -34,18 +34,18 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
-      
-      - name: Terraform Init
-        working-directory: infra/gcp/terraform
-        run: |
-          terraform init -upgrade -reconfigure
-          terraform validate
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.7.5
 
+      - name: Terraform Init
+        working-directory: infra/gcp/terraform
+        run: |
+          terraform init -upgrade -reconfigure
+          terraform validate
+          
       - name: Terraform Plan
         working-directory: infra/gcp/terraform
         run: |
