@@ -36,7 +36,7 @@ jobs:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
       
       - name: Terraform Init
-        working-directory: data-products/customer360/terraform
+        working-directory: infra/gcp/terraform
         run: |
           terraform init -upgrade -reconfigure
           terraform validate
@@ -47,14 +47,14 @@ jobs:
           terraform_version: 1.7.5
 
       - name: Terraform Plan
-        working-directory: infra/gcp
+        working-directory: infra/gcp/terraform
         run: |
           terraform plan -input=false -no-color \
             -var-file="envs/${{ github.event.inputs.environment }}.tfvars"
 
       - name: Terraform Apply
         if: ${{ github.event.inputs.apply == 'true' }}
-        working-directory: infra/gcp
+        working-directory:  infra/gcp/terraform
         run: |
           terraform apply -auto-approve -input=false -no-color \
             -var-file="envs/${{ github.event.inputs.environment }}.tfvars"
