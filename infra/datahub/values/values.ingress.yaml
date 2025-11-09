@@ -1,0 +1,22 @@
+# Enable Ingress for DataHub Frontend (GKE)
+datahub-frontend:
+  ingress:
+    enabled: true
+    ingressClassName: "gce"     # GKE L7 HTTP/HTTPS Ingress
+    annotations:
+      kubernetes.io/ingress.class: "gce"
+      # Optional: use GKE ManagedCertificate
+      networking.gke.io/managed-certificates: datahub-cert
+      # Optional: bind to a reserved static IP (global)
+      kubernetes.io/ingress.global-static-ip-name: datahub-frontend-ip
+    hosts:
+      - datahub.example.dev
+    paths:
+      - /
+    pathType: Prefix
+    tls: []   # ManagedCert handles TLS; leave empty here
+
+global:
+  datahub:
+    hostname: "datahub.example.dev"
+    port: 443

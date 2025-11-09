@@ -1,0 +1,76 @@
+
+elasticsearch:
+  enabled: false
+kafka:
+  enabled: false
+mysql:
+  enabled: false
+
+global:
+  datahub:
+    hostname: "datahub.example.dev"   # set if using Ingress later
+    port: 443
+
+datahub-gms:
+  extraEnv:
+    # === Confluent Cloud Kafka ===
+    - name: KAFKA_BOOTSTRAP_SERVER
+      value: "pkc-xxxxx.europe-west4.gcp.confluent.cloud:9092"   # CHANGE
+    - name: KAFKA_PROPERTIES_SECURITY_PROTOCOL
+      value: "SASL_SSL"
+    - name: KAFKA_PROPERTIES_SASL_MECHANISM
+      value: "PLAIN"
+    - name: KAFKA_PROPERTIES_SASL_JAAS_CONFIG
+      valueFrom:
+        secretKeyRef:
+          name: confluent-kafka-secret
+          key: sasl_jaas_config
+
+    # === Elasticsearch on GKE ===
+    - name: ELASTICSEARCH_HOST
+      value: "http://elasticsearch-master.datahub.svc.cluster.local"
+    - name: ELASTICSEARCH_PORT
+      value: "9200"
+    - name: ELASTICSEARCH_USE_SSL
+      value: "false"
+    - name: ELASTICSEARCH_SSL_VERIFY
+      value: "false"
+
+    # === Cloud SQL (MySQL) via local proxy sidecar ===
+    - name: SPRING_DATASOURCE_URL
+      value: "jdbc:mysql://127.0.0.1:3306/datahub?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&useSSL=false&allowPublicKeyRetrieval=true"
+    - name: SPRING_DATASOURCE_USERNAME
+      value: "datahub_app"
+    - name: SPRING_DATASOURCE_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: datahub-db-secret
+          key: db_password
+
+extraContainers:
+  - name: cloud-sql-proxy
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.11.4
+    args:
+      - "--structured-logs"
+      - "--private-ip"
+      - "--port=3306"
+      - "${CLOUDSQL_CONN_NAME}"
+    securityContext:
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+    env:
+      - name: CLOUDSQL_CONN_NAME
+        valueFrom:
+          secretKeyRef:
+            name: datahub-db-secret
+            key: instance_connection_name
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+      limits:
+        cpu: "250m"
+        memory: "256Mi"
+
+datahub-ingestion-cron:
+  enabled: false

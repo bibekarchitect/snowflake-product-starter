@@ -1,0 +1,148 @@
+name: Deploy DataHub Stack (CloudSQL + ES + DataHub)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "tfvars env & K8s target"
+        type: choice
+        options: [dev]
+        default: dev
+      plan_only:
+        description: "Plan/Preview only (no apply for Terraform; Helm diff only)"
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      NS: datahub
+      SQL_DIR: infra/cloudsql
+      ES_VALUES: infra/elastic/values.elasticsearch.yaml
+      DH_VALUES: infra/datahub/values/values.prod.yaml
+      TFVARS: infra/cloudsql/envs/${{ github.event.inputs.environment }}.tfvars
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name:  ${{ secrets.GKE_CLUSTER_NAME }}
+          location:      ${{ secrets.GKE_LOCATION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      # ---------- Cloud SQL (Terraform) ----------
+      - name: Terraform init (Cloud SQL)
+        working-directory: ${{ env.SQL_DIR }}
+        run: |
+          terraform init -upgrade -reconfigure
+
+      - name: Terraform plan (Cloud SQL)
+        if: ${{ github.event.inputs.plan_only == true }}
+        working-directory: ${{ env.SQL_DIR }}
+        run: |
+          terraform plan -no-color -var-file="${{ env.TFVARS }}"
+
+      - name: Terraform apply (Cloud SQL)
+        if: ${{ github.event.inputs.plan_only == false }}
+        working-directory: ${{ env.SQL_DIR }}
+        run: |
+          terraform apply -auto-approve -no-color -var-file="${{ env.TFVARS }}"
+
+      - name: Capture Cloud SQL outputs
+        id: sqlout
+        working-directory: ${{ env.SQL_DIR }}
+        run: |
+          echo "conn=$(terraform output -raw instance_connection_name)" >> $GITHUB_OUTPUT
+          echo "db=$(terraform output -raw db_name)" >> $GITHUB_OUTPUT
+          echo "user=$(terraform output -raw db_user)" >> $GITHUB_OUTPUT
+
+      # ---------- K8s namespace ----------
+      - name: Ensure namespace
+        run: kubectl create ns $NS --dry-run=client -o yaml | kubectl apply -f -
+
+      # ---------- Elasticsearch on GKE (Helm) ----------
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Add Elastic Helm repo
+        run: |
+          helm repo add elastic https://helm.elastic.co
+          helm repo update
+
+      - name: Helm diff ES (optional)
+        if: ${{ github.event.inputs.plan_only == true }}
+        run: |
+          helm diff upgrade elasticsearch elastic/elasticsearch -n $NS -f $ES_VALUES || true
+
+      - name: Install/upgrade ES
+        if: ${{ github.event.inputs.plan_only == false }}
+        run: |
+          helm upgrade -i elasticsearch elastic/elasticsearch -n $NS -f $ES_VALUES
+
+      # ---------- Secrets for DataHub ----------
+      - name: Kafka Secret (Confluent)
+        run: |
+          kubectl -n $NS delete secret confluent-kafka-secret --ignore-not-found
+          kubectl -n $NS create secret generic confluent-kafka-secret \
+            --from-literal=sasl_jaas_config='org.apache.kafka.common.security.plain.PlainLoginModule required username="${{ secrets.CONFLUENT_API_KEY }}" password="${{ secrets.CONFLUENT_API_SECRET }}";'
+
+      - name: DB Secret (Cloud SQL)
+        run: |
+          kubectl -n $NS delete secret datahub-db-secret --ignore-not-found
+          kubectl -n $NS create secret generic datahub-db-secret \
+            --from-literal=instance_connection_name='${{ steps.sqlout.outputs.conn }}' \
+            --from-literal=db_password='${{ secrets.CLOUDSQL_DB_PASS }}'
+
+      # ---------- DataHub (Helm) ----------
+      - name: Add DataHub Helm repo
+        run: |
+          helm repo add datahub https://helm.datahubproject.io
+          helm repo update
+
+      - name: Helm diff DataHub (optional)
+        if: ${{ github.event.inputs.plan_only == true }}
+        run: |
+          helm diff upgrade datahub datahub/datahub -n $NS -f $DH_VALUES || true
+
+      - name: Install/upgrade DataHub
+        if: ${{ github.event.inputs.plan_only == false }}
+        run: |
+          helm upgrade -i datahub datahub/datahub -n $NS -f $DH_VALUES
+
+      - name: Wait for DataHub
+        if: ${{ github.event.inputs.plan_only == false }}
+        run: |
+          kubectl -n $NS rollout status deploy/datahub-gms --timeout=10m
+          kubectl -n $NS rollout status deploy/datahub-frontend --timeout=10m
+
+      - name: Show pods
+        run: kubectl -n $NS get pods -o wide
+
+    #   - name: Apply ManagedCertificate (optional)
+    #     if: ${{ github.event.inputs.plan_only == false }}
+    #     run: |
+    #         kubectl -n datahub apply -f infra/datahub/ingress/managed-cert.yaml || true
+
+    #   - name: Upgrade DataHub with Ingress overlay
+    #     if: ${{ github.event.inputs.plan_only == false }}
+    #     run: |
+    #         helm upgrade datahub datahub/datahub -n datahub \
+    #             -f infra/datahub/values/values.prod.yaml \
+    #             -f infra/datahub/values/values.ingress.yaml

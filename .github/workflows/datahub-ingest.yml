@@ -1,0 +1,65 @@
+name: DataHub Ingestion (Snowflake)
+
+on:
+  workflow_dispatch:
+    inputs:
+      recipe_path:
+        description: "Recipe YAML path"
+        required: true
+        default: "infra/datahub/ingestion/recipes/snowflake.yml"
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Google auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          project_id:       ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name:  ${{ secrets.GKE_CLUSTER_NAME }}
+          location:      ${{ secrets.GKE_LOCATION }}
+
+      - name: Setup Python & DataHub CLI
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install 'acryl-datahub>=0.13.2'
+
+      - name: Port-forward GMS (bg)
+        run: |
+          # Forward local:8080 -> datahub-gms:8080 inside cluster
+          nohup bash -c "kubectl -n datahub port-forward svc/datahub-gms 8080:8080 >/tmp/pf.log 2>&1" &
+          sleep 5
+          echo "PF started"; tail -n +1 /tmp/pf.log || true
+
+      - name: Check GMS is reachable
+        run: |
+          curl -sS http://localhost:8080/actuator/health || (echo "GMS not responding" && exit 1)
+
+      - name: Run ingestion
+        env:
+          # Snowflake creds for your recipe (if you parameterized with env refs)
+          SNOWFLAKE_USER:       ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD:   ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE:       ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_ACCOUNT:    ${{ secrets.SNOWFLAKE_ACCOUNT_LOCATOR }}   # e.g., UE47735
+          SNOWFLAKE_HOST_PORT:  ${{ secrets.SNOWFLAKE_HOST }}              # e.g., ue47735.europe-west4.gcp.snowflakecomputing.com
+          DATAHUB_GMS_URL:      "http://localhost:8080"
+        run: |
+          # If your recipe uses env variables, datahub CLI will expand them.
+          datahub ingest -c "${{ github.event.inputs.recipe_path }}" --dry-run
+          datahub ingest -c "${{ github.event.inputs.recipe_path }}"

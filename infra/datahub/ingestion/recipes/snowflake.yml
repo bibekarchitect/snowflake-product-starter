@@ -1,0 +1,19 @@
+
+source:
+  type: snowflake
+  config:
+    username: "${SNOWFLAKE_USER}"
+    password: "${SNOWFLAKE_PASSWORD}"
+    account_id: "UE47735"
+    host_port: "ue47735.europe-west4.gcp.snowflakecomputing.com"
+    role: "CICD_SNOWFLAKE_DEPLOY"
+    include_tables: true
+    include_views: true
+    database_pattern:
+      allow:
+        - "CUSTOMER360_DEV"
+
+sink:
+  type: datahub-rest
+  config:
+    server: "http://datahub-gms.datahub.svc.cluster.local:8080"
