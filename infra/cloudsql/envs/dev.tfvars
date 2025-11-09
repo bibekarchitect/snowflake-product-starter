@@ -1,13 +1,8 @@
-
-# ==== GCP project / region ====
-project_id = "YOUR_GCP_PROJECT_ID"
+project_id = "crested-trilogy-474807-p5"
 region     = "europe-west4"
 
-# ==== Networking (self links) ====
-# VPC and Subnet used by your GKE cluster and Cloud SQL private IP
-network = "https://www.googleapis.com/compute/v1/projects/YOUR_GCP_PROJECT_ID/global/networks/vpc-data-platform"
-subnet  = "https://www.googleapis.com/compute/v1/projects/YOUR_GCP_PROJECT_ID/regions/europe-west4/subnetworks/subnet-data-platform-ew4"
-
+network = "projects/crested-trilogy-474807-p5/global/networks/vpc-data-platform"
+subnet  = "projects/crested-trilogy-474807-p5/regions/europe-west4/subnetworks/subnet-data-platform-ew4"
 # ==== Cloud SQL naming ====
 instance_name = "datahub-mysql"
 db_name       = "datahub"
