@@ -73,23 +73,23 @@ jobs:
         run: terraform init -upgrade -reconfigure
 
       - name: Terraform plan (Cloud SQL)
-        if: ${{ github.event.inputs.plan_only == true }}
+        if: ${{ fromJSON(github.event.inputs.plan_only || 'false') }}
         working-directory: ${{ env.SQL_DIR }}
         run: terraform plan -no-color -var-file="${{ env.TFVARS }}"
 
       - name: Terraform apply (Cloud SQL)
-        if: ${{ github.event.inputs.plan_only == false }}
+        if: ${{ fromJSON(github.event.inputs.plan_only || 'false') }}
         working-directory: ${{ env.SQL_DIR }}
         run: terraform apply -auto-approve -no-color -var-file="${{ env.TFVARS }}"
 
       # Install jq to parse TF outputs robustly
       - name: Install jq
-        if: ${{ github.event.inputs.plan_only == false }}
+        if: ${{ fromJSON(github.event.inputs.plan_only || 'false') }}
         run: sudo apt-get update && sudo apt-get install -y jq
 
       # Only capture outputs if apply actually ran
       - name: Capture Cloud SQL outputs
-        if: ${{ github.event.inputs.plan_only == false }}
+        if: ${{ fromJSON(github.event.inputs.plan_only || 'false') }}
         id: sqlout
         working-directory: ${{ env.SQL_DIR }}
         shell: bash
@@ -126,21 +126,21 @@ jobs:
 
       # ---------- Elasticsearch on GKE ----------
       - name: Install/upgrade Elasticsearch
-        if: ${{ github.event.inputs.plan_only == false }}
+        if: ${{ fromJSON(github.event.inputs.plan_only || 'false') }}
         run: |
           helm upgrade -i elasticsearch elastic/elasticsearch -n $NS -f $ES_VALUES
           kubectl -n $NS rollout status statefulset/elasticsearch-master --timeout=10m || true
 
       # ---------- K8s secrets for DataHub ----------
       - name: Kafka Secret (Confluent)
-        if: ${{ github.event.inputs.plan_only == false }}
+        if: ${{ fromJSON(github.event.inputs.plan_only || 'false') }}
         run: |
           kubectl -n $NS delete secret confluent-kafka-secret --ignore-not-found
           kubectl -n $NS create secret generic confluent-kafka-secret \
             --from-literal=sasl_jaas_config='org.apache.kafka.common.security.plain.PlainLoginModule required username="${{ secrets.CONFLUENT_API_KEY }}" password="${{ secrets.CONFLUENT_API_SECRET }}";'
 
       - name: DB Secret (Cloud SQL)
-        if: ${{ github.event.inputs.plan_only == false && steps.sqlout.outputs.conn != '' }}
+        if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') && steps.sqlout.outputs.conn != '' }}
         run: |
           kubectl -n $NS delete secret datahub-db-secret --ignore-not-found
           kubectl -n $NS create secret generic datahub-db-secret \
@@ -149,15 +149,19 @@ jobs:
 
       # ---------- DataHub (GMS + Frontend) ----------
       - name: Install/upgrade DataHub
-        if: ${{ github.event.inputs.plan_only == false }}
+        if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
         run: |
           helm upgrade -i datahub datahub/datahub -n $NS -f $DH_VALUES
 
       - name: Wait for DataHub pods
-        if: ${{ github.event.inputs.plan_only == false }}
+        if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
         run: |
           kubectl -n $NS rollout status deploy/datahub-gms --timeout=10m
           kubectl -n $NS rollout status deploy/datahub-frontend --timeout=10m
 
       - name: Show pods
         run: kubectl -n $NS get pods -o wide
+      - name: Debug plan_only
+        run: |
+          echo "raw='${{ github.event.inputs.plan_only }}'"
+          echo "as-bool='${{ fromJSON(github.event.inputs.plan_only || 'false') }}'"
