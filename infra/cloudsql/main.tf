@@ -32,7 +32,6 @@ resource "google_sql_database_instance" "mysql" {
     ip_configuration {
       ipv4_enabled    = false
       private_network = var.network
-      require_ssl     = false
     }
     availability_type = "ZONAL" # use REGIONAL for HA
     backup_configuration { enabled = true }
