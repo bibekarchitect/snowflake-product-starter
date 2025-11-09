@@ -1,6 +1,6 @@
 project_id  = "crested-trilogy-474807-p5"
 region      = "europe-west4"
-location    = "europe-west4"
+location    = "europe-west4-a"
 network_name = "vpc-data-platform"
 subnet_name  = "subnet-data-platform-ew4"
 gke_name     = "gke-datahub-ew4"
