@@ -75,7 +75,7 @@ jobs:
       - name: Terraform plan (Cloud SQL)
         if: ${{ fromJSON(github.event.inputs.plan_only || 'false') }}
         working-directory: ${{ env.SQL_DIR }}
-        run: terraform plan -no-color -var-file="${{ env.TFVARS }}"
+        run: terraform plan -no-color -var-file="envs/dev.tfvars"
 
       - name: Terraform apply (Cloud SQL)
         if: ${{ fromJSON(github.event.inputs.plan_only || 'false') }}
