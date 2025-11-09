@@ -1,5 +1,9 @@
 name: Deploy DataHub Stack (CloudSQL + ES + DataHub)
 
+concurrency:
+  group: datahub-deploy
+  cancel-in-progress: false
+
 on:
   workflow_dispatch:
     inputs:
@@ -181,3 +185,18 @@ jobs:
         run: |
           helm upgrade datahub datahub/datahub -n datahub \
             -f infra/datahub/values/values.prod.yaml
+            
+      - name: Clear pending Helm release (if any)
+        if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
+        run: |
+            set -euo pipefail
+            if helm -n datahub status datahub 2>/dev/null | grep -qi 'pending'; then
+            echo "Helm release is pending; trying rollback…"
+            LAST_OK=$(helm -n datahub history datahub --output json | jq -r '[.[]|select(.status=="deployed")][-1].revision // empty')
+            if [ -n "$LAST_OK" ]; then
+                helm -n datahub rollback datahub "$LAST_OK" --cleanup-on-fail
+            else
+                echo "No deployed revision; uninstalling release…"
+                helm -n datahub uninstall datahub || true
+            fi
+            fi
