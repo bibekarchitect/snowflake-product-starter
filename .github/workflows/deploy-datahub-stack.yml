@@ -179,7 +179,7 @@ jobs:
         if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
         run: |
           kubectl -n datahub delete job datahub-elasticsearch-setup-job --ignore-not-found
-          
+
       - name: Hard reset Helm release "datahub"
         if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
         run: |
@@ -192,6 +192,23 @@ jobs:
             kubectl -n "$NS" delete secret    -l "owner=helm,name=$REL" --ignore-not-found
             kubectl -n "$NS" delete configmap -l "owner=helm,name=$REL" --ignore-not-found
 
+      - name: Force-unlock Helm release "datahub"
+        if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
+        run: |
+            set -e
+            NS=datahub
+            REL=datahub
+
+            echo "Uninstall (ignore errors)…"
+            helm -n "$NS" uninstall "$REL" || true
+
+            echo "Delete Helm release records (secrets/configmaps)…"
+            kubectl -n "$NS" get secret -o name | grep -E 'sh\.helm\.release\.v1\.datahub\.v[0-9]+' | xargs -r kubectl -n "$NS" delete
+            kubectl -n "$NS" get configmap -o name | grep -E 'sh\.helm\.release\.v1\.datahub\.v[0-9]+' | xargs -r kubectl -n "$NS" delete || true
+
+            echo "Delete failed setup job (if any)…"
+            kubectl -n "$NS" delete job datahub-elasticsearch-setup-job --ignore-not-found
+            
       - name: Upgrade DataHub (pick up ES auth)
         if: ${{ !fromJSON(github.event.inputs.plan_only || 'false') }}
         run: |
