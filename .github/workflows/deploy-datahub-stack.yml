@@ -32,10 +32,27 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
+      - name: Load & validate GKE parameters
+        shell: bash
+        env:
+          GKE_CLUSTER_NAME: ${{ secrets.GKE_CLUSTER_NAME }}
+          GKE_LOCATION:     ${{ secrets.GKE_LOCATION }}
+        run: |
+          echo "::group::Validate GKE inputs"
+          # Mask values in logs just in case
+          echo "::add-mask::$GKE_CLUSTER_NAME"
+          echo "::add-mask::$GKE_LOCATION"
+          : "${GKE_CLUSTER_NAME:?GKE_CLUSTER_NAME is missing. Add it in Settings → Secrets and variables → Actions.}"
+          : "${GKE_LOCATION:?GKE_LOCATION is missing. Add it in Settings → Secrets and variables → Actions.}"
+          echo "Cluster: set ✅"
+          echo "Location: set ✅"
+          echo "::endgroup::"
+          echo "GKE_CLUSTER_NAME=$GKE_CLUSTER_NAME" >> "$GITHUB_ENV"
+          echo "GKE_LOCATION=$GKE_LOCATION"         >> "$GITHUB_ENV"
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
-
+      
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
