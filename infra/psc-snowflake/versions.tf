@@ -12,6 +12,6 @@ terraform {
 terraform {
       backend "gcs" {
         bucket = "tw-tf-state-prod"
-        prefix = "terraform/gke-state" # Optional: specify a path within the bucket
+        prefix = "terraform/gke-psc-state" # Optional: specify a path within the bucket
       }
     }
