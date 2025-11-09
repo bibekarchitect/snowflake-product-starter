@@ -80,7 +80,7 @@ jobs:
       - name: Terraform apply (Cloud SQL)
         if: ${{ fromJSON(github.event.inputs.plan_only || 'false') }}
         working-directory: ${{ env.SQL_DIR }}
-        run: terraform apply -auto-approve -no-color -var-file="${{ env.TFVARS }}"
+        run: terraform apply -auto-approve -no-color -var-file="envs/dev.tfvars"
 
       # Install jq to parse TF outputs robustly
       - name: Install jq
