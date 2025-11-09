@@ -27,7 +27,7 @@ on:
       tf_dir:                    # <— NEW: path to your TF folder
         description: "Terraform directory (repo-relative)"
         required: true
-        default: "data-products/customer360"     # change to e.g. "snowflake/terraform" if that’s your layout
+        default: "data-products/customer360/terraform"     # change to e.g. "snowflake/terraform" if that’s your layout
 
 
 jobs:
@@ -139,7 +139,7 @@ jobs:
 
       # CRITICAL: unset any SNOWFLAKE_* env that could override the profile with empties
       - name: Terraform Init
-        working-directory: data-products/customer360
+        working-directory: data-products/customer360/terraform
         run: |
           terraform init -upgrade -reconfigure
           terraform validate
@@ -189,7 +189,7 @@ jobs:
       #           DROP WAREHOUSE IF EXISTS TF_PRIV_CHECK_WH;"
 
       - name: Terraform Plan
-        working-directory: data-products/customer360
+        working-directory: data-products/customer360/terraform
         env:
           TF_VAR_snowflake_org:     ${{ secrets.SNOWFLAKE_ORG }}
           TF_VAR_snowflake_account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
@@ -207,7 +207,7 @@ jobs:
 
       - name: Terraform Apply
         if: ${{ github.event.inputs.apply == 'true' }}
-        working-directory: data-products/customer360
+        working-directory: data-products/customer360/terraform
         env:
           TF_VAR_snowflake_org:     ${{ secrets.SNOWFLAKE_ORG }}
           TF_VAR_snowflake_account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
