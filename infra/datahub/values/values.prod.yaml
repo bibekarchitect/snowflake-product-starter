@@ -5,27 +5,25 @@ kafka:
   enabled: false
 mysql:
   enabled: false
-
 global:
   datahub:
-    hostname: "datahub.example.dev"   # set if using Ingress later
+    hostname: "datahub.example.dev" # set if using Ingress later
     port: 443
-    
   elasticsearch:
     host: "elasticsearch-master"
-    port: 9200
-    useSSL: true      # Elastic chart uses TLS by default
-    insecure: true    # skip TLS verification inside cluster
+    port: "9200"
+    useSSL: "true" # Elastic chart uses TLS by default
     username: "elastic"
     passwordSecretRef:
-      name: elasticsearch-master-credentials   # created by Elastic Helm chart
+      name: elasticsearch-master-credentials # created by Elastic Helm chart
       key: password
-
+    verifySSL: "false"
+    insecure: "false"
 datahub-gms:
   extraEnv:
     # === Confluent Cloud Kafka ===
     - name: KAFKA_BOOTSTRAP_SERVER
-      value: "pkc-xxxxx.europe-west4.gcp.confluent.cloud:9092"   # CHANGE
+      value: "pkc-xxxxx.europe-west4.gcp.confluent.cloud:9092" # CHANGE
     - name: KAFKA_PROPERTIES_SECURITY_PROTOCOL
       value: "SASL_SSL"
     - name: KAFKA_PROPERTIES_SASL_MECHANISM
@@ -35,7 +33,6 @@ datahub-gms:
         secretKeyRef:
           name: confluent-kafka-secret
           key: sasl_jaas_config
-
     # === Elasticsearch on GKE ===
     - name: ELASTICSEARCH_HOST
       value: "http://elasticsearch-master.datahub.svc.cluster.local"
@@ -45,7 +42,6 @@ datahub-gms:
       value: "false"
     - name: ELASTICSEARCH_SSL_VERIFY
       value: "false"
-
     # === Cloud SQL (MySQL) via local proxy sidecar ===
     - name: SPRING_DATASOURCE_URL
       value: "jdbc:mysql://127.0.0.1:3306/datahub?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&useSSL=false&allowPublicKeyRetrieval=true"
@@ -56,7 +52,6 @@ datahub-gms:
         secretKeyRef:
           name: datahub-db-secret
           key: db_password
-
 extraContainers:
   - name: cloud-sql-proxy
     image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.11.4
@@ -81,7 +76,5 @@ extraContainers:
       limits:
         cpu: "250m"
         memory: "256Mi"
-
 datahub-ingestion-cron:
   enabled: false
-
