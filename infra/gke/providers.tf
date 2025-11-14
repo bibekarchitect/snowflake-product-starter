@@ -9,7 +9,7 @@ provider "google-beta" {
 
 terraform {
       backend "gcs" {
-        bucket = "datahub-tf-state-bucket-storied-box-478112-e8"
+        bucket = "datahub-tf-state-bucket-${{ secrets.GCP_PROJECT_ID }}"
         prefix = "terraform-states/gke-state" # Optional: specify a path within the bucket
       }
     }
