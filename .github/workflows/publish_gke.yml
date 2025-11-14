@@ -63,8 +63,7 @@ jobs:
         run: |
           terraform init -upgrade -reconfigure \
             -backend-config="bucket=datahub-tf-state-bucket-${{ secrets.GCP_PROJECT_ID }}" \
-            -backend-config="prefix=gke" \
-            -backend-config="location=${{ secrets.GCP_REGION }}"
+            -backend-config="prefix=terraform/gke"
           terraform validate
 
       - name: Terraform Plan
