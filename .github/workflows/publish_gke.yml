@@ -61,7 +61,10 @@ jobs:
       - name: Terraform Init
         working-directory: infra/gke
         run: |
-          terraform init -upgrade -reconfigure
+          terraform init -upgrade -reconfigure \
+            -backend-config="bucket=datahub-tf-state-bucket-${{ secrets.GCP_PROJECT_ID }}" \
+            -backend-config="prefix=gke" \
+            -backend-config="location=${{ secrets.GCP_REGION }}"
           terraform validate
 
       - name: Terraform Plan
