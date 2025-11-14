@@ -1,0 +1,78 @@
+name: Publish Infra (GKE + CloudSQL)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options: [dev, prod]
+        default: dev
+      apply:
+        description: "Apply Terraform (true) or only plan (false)"
+        required: true
+        type: boolean
+        default: false
+    #   destroy:
+    #     description: "Destroy Terraform resources"
+    #     required: true
+    #     type: boolean
+    #     default: false
+
+jobs:
+  infra:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          # you can keep or drop 'audience' depending on how you configured WIF
+          audience: "https://github.com/bibekarchitect/snowflake-product-starter"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      # Each env has its own folder: infra/envs/dev or infra/envs/prod
+      # and a backend.hcl containing bucket + prefix.
+      - name: Terraform Init
+        working-directory: infra/envs/${{ github.event.inputs.environment }}
+        run: |
+          terraform init -upgrade -reconfigure \
+            -backend-config=backend.hcl
+          terraform validate
+
+      # Plan always runs (good safety net)
+      - name: Terraform Plan
+        if: ${{ github.event.inputs.destroy == 'false' }}
+        working-directory: infra/envs/${{ github.event.inputs.environment }}
+        run: |
+          terraform plan -input=false -no-color
+
+      - name: Terraform Apply
+        if: ${{ github.event.inputs.apply == 'true' && github.event.inputs.destroy == 'false' }}
+        working-directory: infra/envs/${{ github.event.inputs.environment }}
+        run: |
+          terraform apply -auto-approve -input=false -no-color
+
+    #   - name: Terraform Destroy
+    #     if: ${{ github.event.inputs.destroy == 'true' }}
+    #     working-directory: infra/envs/${{ github.event.inputs.environment }}
+    #     run: |
+    #       terraform destroy -auto-approve -input=false -no-color

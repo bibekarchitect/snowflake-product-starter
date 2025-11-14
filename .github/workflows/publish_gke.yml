@@ -14,11 +14,11 @@ on:
         required: true
         type: boolean
         default: false
-      # destroy:
-      #   description: destroy Terraform resources after apply (true or false)
-      #   required: true
-      #   type: boolean
-      #   default: false
+      destroy:
+        description: destroy Terraform resources after apply (true or false)
+        required: true
+        type: boolean
+        default: false
       # tf_dir:                    # <— NEW: path to your TF folder
       #   description: "Terraform directory (repo-relative)"
       #   required: true
@@ -79,10 +79,10 @@ jobs:
           terraform apply -auto-approve -input=false -no-color \
             -var-file="envs/${{ github.event.inputs.environment }}.tfvars"
       
-      # - name: Terraform Destroy
-      #   if: ${{ github.event.inputs.apply == 'true' }}
-      #   working-directory:  infra/gke
-      #   run: |
-      #     terraform destroy -auto-approve -input=false -no-color \
-      #       -var-file="envs/${{ github.event.inputs.environment }}.tfvars"
+      - name: Terraform Destroy
+        if: ${{ github.event.inputs.apply == 'true' }}
+        working-directory:  infra/gke
+        run: |
+          terraform destroy -auto-approve -input=false -no-color \
+            -var-file="envs/${{ github.event.inputs.environment }}.tfvars"
 
