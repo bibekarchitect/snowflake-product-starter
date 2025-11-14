@@ -1,4 +1,4 @@
-project_id  = "crested-trilogy-474807-p5"
+project_id  = "storied-box-478112-e8"
 region      = "europe-west4"
 location    = "europe-west4-a"
 network_name = "vpc-data-platform"

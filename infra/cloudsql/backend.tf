@@ -1,6 +1,6 @@
 terraform {
       backend "gcs" {
-        bucket = "tw-tf-state-prod"
-        prefix = "terraform/cloudsql" # Optional: specify a path within the bucket
+        bucket = "datahub-tf-state-bucket-${{ secrets.GCP_PROJECT_ID }}"
+        prefix = "terraform-states/gke-state" # Optional: specify a path within the bucket
       }
     }
