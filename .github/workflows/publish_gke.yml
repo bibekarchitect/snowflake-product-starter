@@ -72,11 +72,11 @@ jobs:
           terraform plan -input=false -no-color \
             -var-file="envs/${{ github.event.inputs.environment }}.tfvars"
 
-      - name: Terraform Apply
+      - name: Terraform Destroy
         if: ${{ github.event.inputs.apply == 'true' }}
         working-directory:  infra/gke
         run: |
-          terraform apply -auto-approve -input=false -no-color \
+          terraform destroy -auto-approve -input=false -no-color \
             -var-file="envs/${{ github.event.inputs.environment }}.tfvars"
       
       # - name: Terraform Destroy
