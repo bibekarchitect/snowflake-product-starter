@@ -9,7 +9,7 @@ provider "google-beta" {
 
 terraform {
       backend "gcs" {
-        bucket = "tw-tf-state-prod"
-        prefix = "terraform/gke-state" # Optional: specify a path within the bucket
+        bucket = "datahub-tf-state-bucket-storied-box-478112-e8"
+        prefix = "terraform-states/gke-state" # Optional: specify a path within the bucket
       }
     }
