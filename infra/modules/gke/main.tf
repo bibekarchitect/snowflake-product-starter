@@ -6,6 +6,11 @@ resource "google_container_cluster" "gke" {
   remove_default_node_pool = true
   initial_node_count = 1
   deletion_protection = var.deletion_protection
+  
+  ip_allocation_policy {
+    cluster_secondary_range_name  = "pods"
+    services_secondary_range_name = "services"
+  }
 }
 
 resource "google_container_node_pool" "default_pool" {
