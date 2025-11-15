@@ -35,15 +35,15 @@ module "cloudsql" {
   db_pass = var.sql_db_pass
 }
 
-module "iam_prereqs" {
-  source = "../../modules/iam"
+# module "iam_prereqs" {
+#   source = "../../modules/iam"
 
-  project_id                  = var.project_id
-  automation_sa_name          = "datahub-automation-sa"
-  automation_sa_display_name  = "DataHub Automation SA (Terraform + GitHub Actions)"
-  github_repo                 = "bibekarchitect/snowflake-product-starter"
-  wif_pool_id                 = "github-pool"
-  wif_pool_display_name       = "GitHub Actions Workload Identity Pool"
-  wif_provider_id             = "github-provider"
-  wif_provider_display_name   = "GitHub Actions OIDC Provider"
-}
+#   project_id                  = var.project_id
+#   automation_sa_name          = "datahub-automation-sa"
+#   automation_sa_display_name  = "DataHub Automation SA (Terraform + GitHub Actions)"
+#   github_repo                 = "bibekarchitect/snowflake-product-starter"
+#   wif_pool_id                 = "github-pool"
+#   wif_pool_display_name       = "GitHub Actions Workload Identity Pool"
+#   wif_provider_id             = "github-provider"
+#   wif_provider_display_name   = "GitHub Actions OIDC Provider"
+# }
