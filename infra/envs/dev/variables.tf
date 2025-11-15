@@ -6,13 +6,19 @@ variable "project_id" {
 variable "region" {
   description = "GCP region for regional resources"
   type        = string
-  default     = "asia-south1"
+  default     = "europe-west4"
 }
 
 variable "location" {
   description = "Location for GKE cluster (regional or zonal)"
   type        = string
-  default     = "asia-south1"
+  default     = "europe-west4-a"
+}
+
+variable "zone" {
+  description = "Zone for provider configuration"
+  type        = string
+  default     = "europe-west4-a"
 }
 
 variable "network_name" {
@@ -93,4 +99,9 @@ variable "sql_db_pass" {
   description = "CloudSQL database user password"
   type        = string
   sensitive   = true
+}
+
+variable "terraform_service_account" {
+  type        = string
+  description = "The service account Terraform impersonates."
 }
