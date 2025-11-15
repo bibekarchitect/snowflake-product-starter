@@ -5,10 +5,11 @@ resource "google_container_cluster" "gke" {
   subnetwork = var.subnet_name
   remove_default_node_pool = true
   initial_node_count = 1
+  deletion_protection = var.deletion_protection
 }
 
 resource "google_container_node_pool" "default_pool" {
-  name = "np-default"
+  name = "node-pool-default"
   location = var.location
   cluster = google_container_cluster.gke.name
 

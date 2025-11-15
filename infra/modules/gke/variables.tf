@@ -35,3 +35,9 @@ variable "gke_max_nodes" {
   type        = number
   default     = 1
 }
+
+variable "deletion_protection" {
+  description = "Enable deletion protection for the GKE cluster"
+  type        = bool
+  default     = false
+}

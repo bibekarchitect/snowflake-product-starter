@@ -28,3 +28,11 @@ variable "ip_range_svc" {
   description = "Secondary CIDR block for GKE service IPs"
   type        = string
 }
+
+variable "project_id" {
+  type = string
+}
+
+variable "env" {
+  type = string
+}

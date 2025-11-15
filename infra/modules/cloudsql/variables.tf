@@ -1,42 +1,56 @@
-variable "network_self_link" {
-  description = "Self-link of the VPC network to attach CloudSQL private service connection"
+// infra/modules/cloudsql/variables.tf
+
+variable "project_id" {
+  description = "GCP project ID"
   type        = string
 }
 
-variable "allocated_ip_range" {
-  description = "Name of the allocated IP range (VPC Peering range) for private service connection"
-  type        = string
-}
-
-variable "instance_name" {
-  description = "CloudSQL instance name"
+variable "env" {
+  description = "Environment name (e.g. dev, prod)"
   type        = string
 }
 
 variable "region" {
-  description = "Region where the CloudSQL instance will be deployed"
+  description = "Region for Cloud SQL instance"
   type        = string
-  default     = "asia-south1"
+}
+
+variable "network_self_link" {
+  description = "Self link of the VPC network used for private IP"
+  type        = string
+}
+
+variable "allocated_ip_range" {
+  description = "Name of the reserved range for private service networking"
+  type        = string
+  // e.g. "dev-datahub-mysql-psn-range"
 }
 
 variable "tier" {
-  description = "CloudSQL machine tier (e.g., db-f1-micro, db-custom-1-3840)"
+  description = "Cloud SQL machine tier (e.g. db-custom-1-3840)"
   type        = string
   default     = "db-custom-1-3840"
 }
 
 variable "db_name" {
-  description = "Name of the default database to create in the CloudSQL instance"
+  description = "Database name inside the instance"
   type        = string
+  default     = "datahub"
 }
 
 variable "db_user" {
   description = "Database user name"
   type        = string
+  default     = "datahub"
 }
 
 variable "db_pass" {
-  description = "Password for the CloudSQL user"
+  description = "Database user password"
   type        = string
   sensitive   = true
+}
+
+variable "instance_name" {
+  description = "Cloud SQL instance name"
+  type        = string
 }

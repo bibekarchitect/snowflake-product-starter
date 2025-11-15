@@ -4,21 +4,8 @@ variable "project_id" {
 }
 
 variable "region" {
-  description = "GCP region for regional resources"
+  description = "GCP region where the subnet will be created"
   type        = string
-  default     = "europe-west4"
-}
-
-variable "location" {
-  description = "Location for GKE cluster (regional or zonal)"
-  type        = string
-  default     = "europe-west4-a"
-}
-
-variable "zone" {
-  description = "Zone for provider configuration"
-  type        = string
-  default     = "europe-west4-a"
 }
 
 variable "network_name" {
@@ -27,81 +14,87 @@ variable "network_name" {
 }
 
 variable "subnet_name" {
-  description = "Name of the subnet for GKE and CloudSQL"
+  description = "Name of the subnet inside the VPC"
   type        = string
 }
 
 variable "subnet_cidr" {
-  description = "Primary CIDR block for the subnet"
+  description = "CIDR range for the primary subnet"
   type        = string
 }
 
 variable "ip_range_pods" {
-  description = "Secondary IP CIDR range for GKE pods"
+  description = "Secondary IP range for GKE Pods"
   type        = string
 }
 
 variable "ip_range_svc" {
-  description = "Secondary IP CIDR range for GKE services"
+  description = "Secondary IP range for GKE Services"
   type        = string
 }
-
-variable "gke_name" {
-  description = "Name of the GKE cluster"
+variable "env" {
+  description = "Environment name (e.g. dev, prod)"
+  type        = string
+}
+variable "zone" {
+  description = "GCP zone where resources will be created"
+  type        = string
+}
+variable "allocated_ip_range" {
+  description = "Name of the reserved range for private service networking"
+  type        = string
+  // e.g. "dev-datahub-mysql-psn-range"
+}
+variable "instance_name" {
+  description = "Cloud SQL instance name"
   type        = string
 }
 
 variable "gke_machine_type" {
-  description = "Machine type for the GKE default node pool"
+  description = "GKE Machine Type"
   type        = string
-  default     = "e2-standard-2"
 }
 
 variable "gke_min_nodes" {
-  description = "Minimum number of nodes for GKE autoscaling"
+  description = "GKE minimum node count"
   type        = number
-  default     = 0
 }
 
 variable "gke_max_nodes" {
-  description = "Maximum number of nodes for GKE autoscaling"
+  description = "GKE maximum node count"
   type        = number
-  default     = 1
+}
+variable "deletion_protection" {
+  description = "node deletion protection"
+  type = bool
 }
 
-variable "allocated_ip_range" {
-  description = "Name of the allocated IP range for CloudSQL private service connection"
+variable "db_name" {
+  description = "Database name for the Cloud SQL instance"
   type        = string
+  default     = "my_database"
 }
 
-variable "sql_instance_name" {
-  description = "CloudSQL instance name"
+variable "db_user" {
+  description = "Database username for the Cloud SQL instance"
   type        = string
+  default     = "dbadmin"
 }
 
-variable "sql_tier" {
-  description = "CloudSQL machine tier (e.g., db-f1-micro, db-custom-1-3840)"
-  type        = string
-  default     = "db-custom-1-3840"
-}
-
-variable "sql_db_name" {
-  description = "CloudSQL database name"
-  type        = string
-}
-
-variable "sql_db_user" {
-  description = "CloudSQL user name"
-  type        = string
-}
-
-variable "sql_db_pass" {
-  description = "CloudSQL database user password"
+variable "db_pass" {
+  description = "Database password for the Cloud SQL instance"
   type        = string
   sensitive   = true
 }
 
-# variable "terraform_service_account" {
-#   type        = string
-#   description = "The service account Terraform impersonates."
-# }
+variable "tier" {
+  description = "Machine type / service tier for the Cloud SQL instance (e.g. db-n1-standard-1)"
+  type        = string
+  default     = "db-n1-standard-1"
+}
+
+variable "gke_cluster_name" {
+  description = "Name of the GKE cluster"
+  type        = string
+  default     = "gke-cluster"
+}

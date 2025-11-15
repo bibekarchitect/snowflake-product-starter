@@ -19,15 +19,10 @@ provider "google" {
   project = var.project_id
   region  = var.region
   zone    = var.zone
-
-  # Required for Workload Identity Federation (GitHub Actions)
-  #impersonate_service_account = var.terraform_service_account
 }
 
 provider "google-beta" {
   project = var.project_id
   region  = var.region
   zone    = var.zone
-
-#   impersonate_service_account = var.terraform_service_account
 }
