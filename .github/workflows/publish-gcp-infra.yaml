@@ -1,4 +1,4 @@
-name: Publish Infra (GKE + CloudSQL)
+name: Publish GCP Infra (GKE + CloudSQL) NEW
 
 on:
   workflow_dispatch:
@@ -14,11 +14,6 @@ on:
         required: true
         type: boolean
         default: false
-    #   destroy:
-    #     description: "Destroy Terraform resources"
-    #     required: true
-    #     type: boolean
-    #     default: false
 
 jobs:
   infra:
@@ -60,19 +55,12 @@ jobs:
 
       # Plan always runs (good safety net)
       - name: Terraform Plan
-        if: ${{ github.event.inputs.destroy == 'false' }}
         working-directory: infra/envs/${{ github.event.inputs.environment }}
         run: |
           terraform plan -input=false -no-color
 
       - name: Terraform Apply
-        if: ${{ github.event.inputs.apply == 'true' && github.event.inputs.destroy == 'false' }}
+        if: ${{ github.event.inputs.apply == 'true' }}
         working-directory: infra/envs/${{ github.event.inputs.environment }}
         run: |
           terraform apply -auto-approve -input=false -no-color
-
-    #   - name: Terraform Destroy
-    #     if: ${{ github.event.inputs.destroy == 'true' }}
-    #     working-directory: infra/envs/${{ github.event.inputs.environment }}
-    #     run: |
-    #       terraform destroy -auto-approve -input=false -no-color

@@ -1,4 +1,4 @@
-name: Publish GKE Infra
+name: Publish GKE Infra [OLD]
 
 on:
   workflow_dispatch:

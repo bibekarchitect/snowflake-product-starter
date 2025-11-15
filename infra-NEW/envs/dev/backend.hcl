@@ -1,2 +1,2 @@
-bucket = "datahub-tf-state-bucket-YOUR_DEV_PROJECT_ID"
+bucket = "datahub-tf-state-bucket-storied-box-478112-e8"
 prefix = "infra/dev"
