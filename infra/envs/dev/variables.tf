@@ -101,7 +101,7 @@ variable "sql_db_pass" {
   sensitive   = true
 }
 
-variable "terraform_service_account" {
-  type        = string
-  description = "The service account Terraform impersonates."
-}
+# variable "terraform_service_account" {
+#   type        = string
+#   description = "The service account Terraform impersonates."
+# }
