@@ -63,6 +63,7 @@ resource "google_container_cluster" "gke" {
   subnetwork         = google_compute_subnetwork.subnet.name
   remove_default_node_pool = true
   initial_node_count = 1
+  deletion_protection = false
 
   ip_allocation_policy {
     cluster_secondary_range_name  = "pods"
