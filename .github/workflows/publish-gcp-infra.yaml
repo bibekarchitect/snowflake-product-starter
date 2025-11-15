@@ -53,6 +53,12 @@ jobs:
             -backend-config=backend.hcl
           terraform validate
 
+      - id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@v1
+        with:
+            secrets: |
+                DB_PASS:datahub-db-pass
+
       # Plan always runs (good safety net)
       - name: Terraform Plan
         working-directory: infra/envs/${{ github.event.inputs.environment }}
@@ -64,3 +70,5 @@ jobs:
         working-directory: infra/envs/${{ github.event.inputs.environment }}
         run: |
           terraform apply -auto-approve -input=false -no-color
+        env:
+            TF_VAR_db_pass: ${{ steps.secrets.outputs.DB_PASS }}
