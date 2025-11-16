@@ -82,9 +82,8 @@ variable "db_user" {
 }
 
 variable "db_pass" {
-  description = "Database password for the Cloud SQL instance"
   type        = string
-  sensitive   = true
+  description = "Password for datahub_app MySQL user"
 }
 
 variable "tier" {

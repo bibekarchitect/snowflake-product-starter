@@ -41,13 +41,12 @@ variable "db_name" {
 variable "db_user" {
   description = "Database user name"
   type        = string
-  default     = "datahub"
+  default     = "datahub_app"
 }
 
 variable "db_pass" {
-  description = "Database user password"
   type        = string
-  sensitive   = true
+  description = "DB password for app user"
 }
 
 variable "instance_name" {
