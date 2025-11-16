@@ -1,83 +1,38 @@
-
-locals {
-  required_apis = toset([
-    "container.googleapis.com",
-    "compute.googleapis.com",
-    "iam.googleapis.com",
-    "iamcredentials.googleapis.com",
-    "cloudresourcemanager.googleapis.com",
-    "sqladmin.googleapis.com",
-    "servicenetworking.googleapis.com",
-    "artifactregistry.googleapis.com",
-    "storage.googleapis.com",
-    "monitoring.googleapis.com",
-    "logging.googleapis.com",
-  ])
-
-  automation_roles = toset([
-    "roles/editor",
-    "roles/compute.admin",
-    "roles/container.admin",
-    "roles/servicenetworking.networksAdmin",
-    "roles/cloudsql.admin",
-    "roles/artifactregistry.admin",
-    "roles/storage.admin",
-    "roles/iam.serviceAccountAdmin",
-    "roles/iam.serviceAccountUser",
-    "roles/logging.admin",
-    "roles/monitoring.admin",
-  ])
+# 1) GCP Service Account used by GKE workloads
+resource "google_service_account" "datahub_gke" {
+  account_id   = "datahub-gke-sa"
+  display_name = "DataHub GKE workloads"
 }
 
-resource "google_project_service" "required" {
-  for_each = local.required_apis
-  project  = var.project_id
-  service  = each.key
-  disable_on_destroy = false
-}
-
-resource "google_service_account" "automation" {
-  account_id   = var.automation_sa_name
-  display_name = var.automation_sa_display_name
-  project      = var.project_id
-}
-
-resource "google_project_iam_member" "automation_roles" {
-  for_each = local.automation_roles
+# 2) IAM roles for Cloud SQL + IAM DB auth
+resource "google_project_iam_member" "datahub_gke_cloudsql_client" {
   project = var.project_id
-  role    = each.value
-  member  = "serviceAccount:${google_service_account.automation.email}"
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.datahub_gke.email}"
 }
 
-resource "google_iam_workload_identity_pool" "github_pool" {
-  project                   = var.project_id
-  workload_identity_pool_id = var.wif_pool_id
-  display_name              = var.wif_pool_display_name
-  description               = "OIDC pool for GitHub Actions"
+resource "google_project_iam_member" "datahub_gke_cloudsql_instance_user" {
+  project = var.project_id
+  role    = "roles/cloudsql.instanceUser"
+  member  = "serviceAccount:${google_service_account.datahub_gke.email}"
 }
 
-resource "google_iam_workload_identity_pool_provider" "github_provider" {
-  project                            = var.project_id
-  workload_identity_pool_id          = google_iam_workload_identity_pool.github_pool.workload_identity_pool_id
-  workload_identity_pool_provider_id = var.wif_provider_id
-  display_name                       = var.wif_provider_display_name
+# Optional for admin-like permissions in lab only (DO NOT use in prod)
+# resource "google_project_iam_member" "datahub_gke_cloudsql_admin" {
+#   project = var.project_id
+#   role    = "roles/cloudsql.admin"
+#   member  = "serviceAccount:${google_service_account.datahub_gke.email}"
+# }
 
-  attribute_mapping = {
-    "google.subject"       = "assertion.sub"
-    "attribute.repository" = "assertion.repository"
-    "attribute.actor"      = "assertion.actor"
-  }
-
-  attribute_condition = "assertion.repository=='${var.github_repo}'"
-
-  oidc {
-    issuer_uri = "https://token.actions.githubusercontent.com"
-  }
-}
-
-resource "google_service_account_iam_member" "wif_impersonation" {
-  service_account_id = google_service_account.automation.name
+# 3) Bind K8s ServiceAccount -> GCP SA via Workload Identity
+#
+# This assumes your GKE cluster has:
+# workload_identity_config {
+#   workload_pool = "${var.project_id}.svc.id.goog"
+# }
+#
+resource "google_service_account_iam_member" "datahub_gke_wi_binding" {
+  service_account_id = google_service_account.datahub_gke.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github_pool.name}/attribute.repository/${var.github_repo}"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.gke_namespace}/${var.gke_service_account_name}]"
 }
-

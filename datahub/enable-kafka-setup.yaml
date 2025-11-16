@@ -1,0 +1,2 @@
+kafkaSetupJob:
+  enabled: false

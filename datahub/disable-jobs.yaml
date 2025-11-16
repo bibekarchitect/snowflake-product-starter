@@ -1,0 +1,19 @@
+# Turn off the “built-in” toggles where they exist
+elasticsearchSetupJob:
+  enabled: true
+
+kafkaSetupJob:
+  enabled: false
+mysqlSetupJob:
+  enabled: false
+
+# Disable the runtime feature flag the chart also checks
+global:
+  datahub:
+    systemUpdate:
+      enabled: true
+
+# Also turn the nonblocking variant off (the chart renders this too)
+datahubSystemUpdate:
+  nonblocking:
+    enabled: false

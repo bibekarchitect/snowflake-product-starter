@@ -1,0 +1,29 @@
+global:
+  kafka:
+    bootstrap:
+      # You already have an ExternalName service called prerequisites-kafka
+      #server: "prerequisites-kafka:9002"
+      server: "pkc-ewzgj.europe-west4.gcp.confluent.cloud:9092"
+
+    schemaregistry:
+      type: KAFKA
+      # Replace with your actual Confluent Schema Registry URL
+      url: "https://psrc-1yngo33.europe-west4.gcp.confluent.cloud"
+
+  # Directly configure Kafka client properties for SASL_SSL / PLAIN
+  springKafkaConfigurationOverrides:
+    security.protocol: "SASL_SSL"
+    sasl.mechanism: "PLAIN"
+
+    # JAAS config: replace <API_KEY> and <API_SECRET> with your Confluent Kafka API key/secret
+    sasl.jaas.config: >
+      org.apache.kafka.common.security.plain.PlainLoginModule required
+      username="G26CDYYVASO663SR"
+      password="cfltk5WsLpIwWLCmejc5EUg13MOvx2ffPXlzEOqpinmmi67Go4xOiZejKa1Pf+QA";
+
+    # Schema Registry auth – replace with your SR key/secret if using SR auth
+    basic.auth.credentials.source: "JHEVW3TXRGCE4T72"
+    basic.auth.user.info: "cflt5FsGT/7nr+vKYZwY6cJpIuXjoNQrJKFpAxW7gSFnObapn9LgFaPrPadSUyxg"
+
+    # Recommended for Confluent Cloud multi-AZ endpoints
+    client.dns.lookup: "use_all_dns_ips"

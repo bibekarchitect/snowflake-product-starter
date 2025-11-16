@@ -53,3 +53,9 @@ variable "instance_name" {
   description = "Cloud SQL instance name"
   type        = string
 }
+
+variable "enable_iam_auth" {
+  description = "Turn on Cloud SQL IAM DB Authentication"
+  type        = bool
+  default     = false
+}

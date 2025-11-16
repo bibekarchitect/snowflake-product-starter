@@ -27,6 +27,15 @@ resource "google_sql_database_instance" "mysql" {
       ipv4_enabled    = false
       private_network = var.network_self_link
     }
+
+    # Enable IAM DB auth if requested
+    dynamic "database_flags" {
+      for_each = var.enable_iam_auth ? [1] : []
+      content {
+        name  = "cloudsql_iam_authentication"
+        value = "on"
+      }
+    }
   }
 }
 
@@ -39,8 +48,4 @@ resource "google_sql_user" "app" {
   name     = var.db_user
   instance = google_sql_database_instance.mysql.name
   password = var.db_pass
-}
-
-output "instance_connection_name" {
-  value = google_sql_database_instance.mysql.connection_name
 }

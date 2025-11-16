@@ -28,6 +28,8 @@ module "cloudsql" {
   db_name = var.db_name
   db_user = var.db_user
   db_pass = var.db_pass
+
+  enable_iam_auth = true
 }
 
 # 3) GKE Cluster
@@ -43,4 +45,12 @@ module "gke" {
   gke_min_nodes   = var.gke_min_nodes
   gke_max_nodes   = var.gke_max_nodes
   deletion_protection = var.deletion_protection
+}
+
+module "iam" {
+  source = "../../modules/iam"
+
+  project_id               = var.project_id
+  gke_namespace            = "datahub"
+  gke_service_account_name = "datahub-gms"
 }
