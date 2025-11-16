@@ -11,6 +11,10 @@ resource "google_container_cluster" "gke" {
     cluster_secondary_range_name  = "pods"
     services_secondary_range_name = "services"
   }
+
+  workload_identity_config {
+    workload_pool = "${var.project_id}.svc.id.goog"
+  }
 }
 
 resource "google_container_node_pool" "default_pool" {
