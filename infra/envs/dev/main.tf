@@ -45,6 +45,7 @@ module "gke" {
   gke_min_nodes   = var.gke_min_nodes
   gke_max_nodes   = var.gke_max_nodes
   deletion_protection = var.deletion_protection
+  project_id = var.project_id
 }
 
 module "iam" {
