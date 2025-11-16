@@ -25,6 +25,10 @@ resource "google_container_node_pool" "default_pool" {
   node_config {
     machine_type = var.gke_machine_type
     oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+
+    workload_metadata_config {
+    mode = "GKE_METADATA"
+  }
   }
 
   autoscaling {
