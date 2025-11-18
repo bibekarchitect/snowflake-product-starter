@@ -20,7 +20,7 @@ ip_range_svc  = "10.41.0.0/20"
 # GKE Cluster
 # ---------------------
 gke_cluster_name  = "dev-datahub-gke"
-gke_machine_type = "e2-standard-2"
+gke_machine_type = "e2-standard-4"
 gke_min_nodes     = 0  # commented out because this variable is not defined/expected by the module
 gke_max_nodes     = 1  # removed because the module does not accept this attribute; configure node-pool autoscaling using the module's expected variables (e.g., node_pool_autoscaling or max_node_count)
 deletion_protection = false
