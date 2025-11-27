@@ -17,6 +17,7 @@ resource "google_sql_database_instance" "mysql" {
   project          = var.project_id
   region           = var.region
   database_version = "MYSQL_8_0"
+  deletion_protection = false
 
   depends_on = [google_service_networking_connection.private_vpc_connection]
 
