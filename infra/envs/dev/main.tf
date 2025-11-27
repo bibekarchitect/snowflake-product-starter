@@ -11,26 +11,26 @@ module "network" {
   ip_range_svc  = var.ip_range_svc
 }
 
-# 2) Cloud SQL (private IP)
-module "cloudsql" {
-  source = "../../modules/cloudsql"
+# # 2) Cloud SQL (private IP)
+# module "cloudsql" {
+#   source = "../../modules/cloudsql"
 
-  project_id        = var.project_id
-  region            = var.region
-  env               = var.env
+#   project_id        = var.project_id
+#   region            = var.region
+#   env               = var.env
 
-  network_self_link = module.network.network_self_link
+#   network_self_link = module.network.network_self_link
 
-  allocated_ip_range = var.allocated_ip_range
-  instance_name      = var.instance_name
-  tier               = var.tier
+#   allocated_ip_range = var.allocated_ip_range
+#   instance_name      = var.instance_name
+#   tier               = var.tier
 
-  db_name = var.db_name
-  db_user = var.db_user
-  db_pass = var.db_pass
+#   db_name = var.db_name
+#   db_user = var.db_user
+#   db_pass = var.db_pass
 
-  enable_iam_auth = true
-}
+#   enable_iam_auth = true
+# }
 
 # 3) GKE Cluster
 module "gke" {
