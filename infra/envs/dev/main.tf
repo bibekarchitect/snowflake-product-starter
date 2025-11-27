@@ -30,7 +30,7 @@ module "network" {
 #   db_pass = var.db_pass
 
 #   enable_iam_auth = true
-}
+#}
 
 # 3) GKE Cluster
 module "gke" {
