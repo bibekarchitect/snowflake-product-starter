@@ -97,3 +97,8 @@ variable "gke_cluster_name" {
   type        = string
   default     = "gke-cluster"
 }
+
+variable "repository_name" {
+  type        = string
+  description = "Artifact Registry repository name"
+}
