@@ -57,7 +57,7 @@ module "iam" {
 }
 
 module "artifact_registry" {
-  source          = "../modules/artifact-registry"
+  source          = "../../modules/artifact-registry"
   project_id      = var.project_id
   region          = var.region
   repository_name = var.repository_name
