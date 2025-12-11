@@ -1,0 +1,52 @@
+data_product:
+  name: customer360
+  display_name: Customer 360 Profile
+  domain: marketing
+  description: >
+    Unified customer 360-degree view combining CRM, orders and engagement data.
+  owner: bibek.chatterjee@yourcompany.com
+
+  tags:
+    - gold
+    - pii
+    - trusted
+
+  snowflake:
+    account: your_snowflake_account
+    warehouse: ANALYTICS_WH
+    database: CUSTOMER360_DB
+    schema: MART
+    table: CUSTOMER_PROFILE
+    cluster_by:
+      - CUSTOMER_ID
+
+  schema:
+    - name: CUSTOMER_ID
+      type: STRING
+      description: Primary key for the customer.
+    - name: FULL_NAME
+      type: STRING
+      description: Customer full name.
+    - name: LIFETIME_VALUE
+      type: NUMBER(18,2)
+      description: Lifetime value of customer.
+    - name: SEGMENT
+      type: STRING
+      description: Segmentation bucket.
+
+  quality:
+    freshness_sla: "1 hour"
+    completeness_threshold: 0.98
+
+  upstream_sources:
+    - type: snowflake
+      name: CRM_DB.RAW.CUSTOMERS
+    - type: kafka
+      name: orders.order_events
+
+  access_policies:
+    read:
+      - group: marketing-analytics
+      - group: central-data-governance
+    write:
+      - group: team-marketing-data

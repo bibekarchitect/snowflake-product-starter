@@ -1,0 +1,51 @@
+name: Create or Update Data Product
+
+on:
+  push:
+    paths:
+      - "data-products/customer360/*.yaml"
+
+jobs:
+  create-data-product:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Find changed data product files
+        id: changed
+        run: |
+          files=$(git diff --name-only HEAD~1 HEAD | grep 'data-products/.*\.yaml' || true)
+          echo "files=$files"
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$files" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: No contract changes
+        if: steps.changed.outputs.files == ''
+        run: |
+          echo "No data product contracts changed. Skipping."
+          exit 0
+
+      - name: Call Operator API for each contract
+        env:
+          OPERATOR_API_URL: ${{ secrets.OPERATOR_API_URL }}  # e.g. https://operator.yourdomain.com
+        run: |
+          for f in ${{ steps.changed.outputs.files }}
+          do
+            echo "Processing $f"
+            body=$(python - << 'EOF'
+            import yaml, json
+            import sys
+
+            path = sys.argv[1]
+            with open(path, "r") as fh:
+                content = fh.read()
+            print(json.dumps({"contract_yaml": content}))
+            EOF
+            "$f")
+                        curl -X POST "$OPERATOR_API_URL/data-products" \
+                        -H "Content-Type: application/json" \
+                        -d "$body"
+                    done
