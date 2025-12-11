@@ -4,4 +4,4 @@ pyyaml
 pydantic
 snowflake-connector-python
 requests
-datahub-emitter
+acryl-datahub
