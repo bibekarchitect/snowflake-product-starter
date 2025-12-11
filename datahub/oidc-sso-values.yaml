@@ -1,0 +1,32 @@
+datahub-frontend:
+  extraEnvs:
+    - name: AUTH_OIDC_ENABLED
+      value: "true"
+
+    - name: AUTH_OIDC_CLIENT_ID
+      value: "e9417567-120d-43b8-b8cc-43c8ddfe0378"
+
+    - name: AUTH_OIDC_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: datahub-oidc-secret
+          key: secret
+
+    - name: AUTH_OIDC_DISCOVERY_URI
+      value: "https://login.microsoftonline.com/d1a5fae0-c515-4f57-86a6-e022606fc7c1/v2.0/.well-known/openid-configuration"
+
+    # 👇 IMPORTANT: match localhost + port
+    - name: AUTH_OIDC_BASE_URL
+      value: "http://localhost:9002"
+
+    - name: AUTH_OIDC_SCOPE
+      value: "openid profile email"
+
+    - name: AUTH_OIDC_USER_NAME_CLAIM
+      value: "preferred_username"   # or "email"
+
+    - name: AUTH_OIDC_JIT_PROVISIONING_ENABLED
+      value: "true"
+
+    - name: AUTH_JAAS_ENABLED
+      value: "true"   # keep backdoor while testing

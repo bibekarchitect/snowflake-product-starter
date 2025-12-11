@@ -55,3 +55,13 @@ module "iam" {
   gke_namespace            = "datahub"
   gke_service_account_name = "datahub-gms"
 }
+
+module "artifact_registry" {
+  source          = "../modules/artifact-registry"
+  project_id      = var.project_id
+  region          = var.region
+  repository_name = var.repository_name
+
+  # Empty because GitHub Actions uses Workload Identity Federation
+  service_accounts = {}
+}

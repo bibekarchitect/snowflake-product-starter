@@ -35,3 +35,5 @@ tier               = "db-custom-1-3840"
 db_name = "datahub"
 db_user = "datahub_app"
 # db_pass = "some-dev-password"
+
+repository_name = "my-app-images"
